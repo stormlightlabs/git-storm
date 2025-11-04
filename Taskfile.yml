@@ -1,0 +1,95 @@
+version: "3"
+
+vars:
+  BINARY_NAME: storm
+  BUILD_DIR: ./tmp
+  MAIN_PATH: ./main.go
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the storm binary to ./tmp
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}} {{.MAIN_PATH}}
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}}"
+
+  build:release:
+    desc: Build optimized release binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -ldflags="-s -w -X main.versionString={{.VERSION}}" -o {{.BUILD_DIR}}/{{.BINARY_NAME}} {{.MAIN_PATH}}
+
+  install:
+    desc: Install storm to $GOPATH/bin
+    cmds:
+      - go install {{.MAIN_PATH}}
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+      - go clean
+
+  test:
+    desc: Run all tests with verbose output
+    cmds:
+      - go test -v ./...
+
+  test:quiet:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  test:cover:
+    desc: Run tests with coverage report
+    cmds:
+      - go test -coverprofile={{.BUILD_DIR}}/coverage.out ./...
+      - go tool cover -html={{.BUILD_DIR}}/coverage.out -o {{.BUILD_DIR}}/coverage.html
+      - 'echo "Coverage report: {{.BUILD_DIR}}/coverage.html"'
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - go fmt ./...
+
+  tidy:
+    desc: Tidy and verify dependencies
+    cmds:
+      - go mod tidy
+      - go mod verify
+
+  deps:
+    desc: Download dependencies
+    cmds:
+      - go mod download
+
+  check:
+    desc: Run all checks (fmt, test, lint)
+    cmds:
+      - task: fmt
+      - task: test
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  setup:
+    desc: Initial setup - install dependencies and build
+    cmds:
+      - task: deps
+      - task: tidy
+      - task: build
+      - echo "Setup complete."

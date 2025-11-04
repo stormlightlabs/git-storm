@@ -125,9 +125,9 @@ Make a repo: `github.com/stormlightlabs/homebrew-tools`.
 ```ruby
 class Gostorm < Formula
   desc "Git-aware changelog manager with TUI review"
-  homepage "https://github.com/stormlightlabs/storm"
+  homepage "https://github.com/stormlightlabs/git-storm"
   version "1.3.0"
-  url "https://github.com/stormlightlabs/storm/archive/refs/tags/v1.3.0.tar.gz"
+  url "https://github.com/stormlightlabs/git-storm/archive/refs/tags/v1.3.0.tar.gz"
   sha256 "<insert_sha256_here>"
   license "MIT"
 
@@ -173,7 +173,7 @@ storm.nuspec
 ```powershell
 $ErrorActionPreference = 'Stop'
 $toolsDir   = "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)"
-$url        = 'https://github.com/stormlightlabs/storm/releases/download/v1.3.0/storm_1.3.0_windows_amd64.zip'
+$url        = 'https://github.com/stormlightlabs/git-storm/releases/download/v1.3.0/storm_1.3.0_windows_amd64.zip'
 
 Install-ChocolateyZipPackage 'storm' $url $toolsDir
 ```
@@ -188,7 +188,7 @@ Install-ChocolateyZipPackage 'storm' $url $toolsDir
     <authors>Owais Jamil</authors>
     <description>Git-aware changelog manager with TUI review</description>
     <licenseUrl>https://opensource.org/licenses/MIT</licenseUrl>
-    <projectUrl>https://github.com/stormlightlabs/storm</projectUrl>
+    <projectUrl>https://github.com/stormlightlabs/git-storm</projectUrl>
   </metadata>
 </package>
 ```
@@ -210,7 +210,7 @@ pkgver=1.3.0
 pkgrel=1
 pkgdesc="Git-aware changelog manager with TUI review"
 arch=('x86_64')
-url="https://github.com/stormlightlabs/storm"
+url="https://github.com/stormlightlabs/git-storm"
 license=('MIT')
 depends=('git' 'go')
 source=("$url/archive/refs/tags/v${pkgver}.tar.gz")
