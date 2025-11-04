@@ -2,9 +2,12 @@ package gitlog
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/object"
 )
 
 // CommitKind represents the kind of commit according to Conventional Commits.
@@ -265,4 +268,166 @@ func splitLines(s string) []string {
 		lines = append(lines, s[start:])
 	}
 	return lines
+}
+
+// ParseRefArgs parses command arguments to extract from/to refs.
+// Supports both "from..to" and "from to" syntax.
+// If only one arg, treats it as from with to=HEAD.
+func ParseRefArgs(args []string) (from, to string) {
+	if len(args) == 0 {
+		return "", ""
+	}
+	if len(args) == 1 {
+		parts := strings.Split(args[0], "..")
+		if len(parts) == 2 {
+			return parts[0], parts[1]
+		}
+		return args[0], "HEAD"
+	}
+	return args[0], args[1]
+}
+
+// GetCommitRange returns commits reachable from toRef but not from fromRef.
+// This implements git log from..to range semantics.
+func GetCommitRange(repo *git.Repository, fromRef, toRef string) ([]*object.Commit, error) {
+	fromHash, err := repo.ResolveRevision(plumbing.Revision(fromRef))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %s: %w", fromRef, err)
+	}
+
+	toHash, err := repo.ResolveRevision(plumbing.Revision(toRef))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %s: %w", toRef, err)
+	}
+
+	toCommits := make(map[plumbing.Hash]bool)
+	toIter, err := repo.Log(&git.LogOptions{From: *toHash})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commits from %s: %w", toRef, err)
+	}
+
+	err = toIter.ForEach(func(c *object.Commit) error {
+		toCommits[c.Hash] = true
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate commits from %s: %w", toRef, err)
+	}
+
+	fromCommits := make(map[plumbing.Hash]bool)
+	fromIter, err := repo.Log(&git.LogOptions{From: *fromHash})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commits from %s: %w", fromRef, err)
+	}
+
+	err = fromIter.ForEach(func(c *object.Commit) error {
+		fromCommits[c.Hash] = true
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate commits from %s: %w", fromRef, err)
+	}
+
+	// Collect commits that are in toCommits but not in fromCommits
+	result := []*object.Commit{}
+	toIter, err = repo.Log(&git.LogOptions{From: *toHash})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commits from %s: %w", toRef, err)
+	}
+
+	err = toIter.ForEach(func(c *object.Commit) error {
+		if !fromCommits[c.Hash] {
+			result = append(result, c)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect commit range: %w", err)
+	}
+
+	// Reverse to get chronological order (oldest first)
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+
+	return result, nil
+}
+
+// GetFileContent reads the content of a file at a specific ref (commit, tag, or branch).
+func GetFileContent(repo *git.Repository, ref, filePath string) (string, error) {
+	hash, err := repo.ResolveRevision(plumbing.Revision(ref))
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve %s: %w", ref, err)
+	}
+
+	commit, err := repo.CommitObject(*hash)
+	if err != nil {
+		return "", fmt.Errorf("failed to get commit: %w", err)
+	}
+
+	tree, err := commit.Tree()
+	if err != nil {
+		return "", fmt.Errorf("failed to get tree: %w", err)
+	}
+
+	file, err := tree.File(filePath)
+	if err != nil {
+		return "", fmt.Errorf("file not found: %w", err)
+	}
+
+	content, err := file.Contents()
+	if err != nil {
+		return "", fmt.Errorf("failed to read file content: %w", err)
+	}
+
+	return content, nil
+}
+
+// GetChangedFiles returns the list of files that changed between two commits.
+func GetChangedFiles(repo *git.Repository, fromRef, toRef string) ([]string, error) {
+	fromHash, err := repo.ResolveRevision(plumbing.Revision(fromRef))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %s: %w", fromRef, err)
+	}
+
+	toHash, err := repo.ResolveRevision(plumbing.Revision(toRef))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %s: %w", toRef, err)
+	}
+
+	fromCommit, err := repo.CommitObject(*fromHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit %s: %w", fromRef, err)
+	}
+
+	toCommit, err := repo.CommitObject(*toHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit %s: %w", toRef, err)
+	}
+
+	fromTree, err := fromCommit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tree for %s: %w", fromRef, err)
+	}
+
+	toTree, err := toCommit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tree for %s: %w", toRef, err)
+	}
+
+	changes, err := fromTree.Diff(toTree)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute diff: %w", err)
+	}
+
+	files := make([]string, 0, len(changes))
+	for _, change := range changes {
+		if change.To.Name != "" {
+			files = append(files, change.To.Name)
+		} else {
+			files = append(files, change.From.Name)
+		}
+	}
+
+	return files, nil
 }

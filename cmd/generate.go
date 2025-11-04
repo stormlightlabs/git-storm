@@ -17,8 +17,6 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/spf13/cobra"
 	"github.com/stormlightlabs/git-storm/internal/changeset"
 	"github.com/stormlightlabs/git-storm/internal/gitlog"
@@ -29,72 +27,6 @@ var (
 	interactive bool
 	sinceTag    string
 )
-
-// getCommitRange returns commits reachable from toRef but not from fromRef.
-// This implements the git log from..to range semantics.
-func getCommitRange(repo *git.Repository, fromRef, toRef string) ([]*object.Commit, error) {
-	fromHash, err := repo.ResolveRevision(plumbing.Revision(fromRef))
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve %s: %w", fromRef, err)
-	}
-
-	toHash, err := repo.ResolveRevision(plumbing.Revision(toRef))
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve %s: %w", toRef, err)
-	}
-
-	toCommits := make(map[plumbing.Hash]bool)
-	toIter, err := repo.Log(&git.LogOptions{From: *toHash})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get commits from %s: %w", toRef, err)
-	}
-
-	err = toIter.ForEach(func(c *object.Commit) error {
-		toCommits[c.Hash] = true
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to iterate commits from %s: %w", toRef, err)
-	}
-
-	fromCommits := make(map[plumbing.Hash]bool)
-	fromIter, err := repo.Log(&git.LogOptions{From: *fromHash})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get commits from %s: %w", fromRef, err)
-	}
-
-	err = fromIter.ForEach(func(c *object.Commit) error {
-		fromCommits[c.Hash] = true
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to iterate commits from %s: %w", fromRef, err)
-	}
-
-	// Collect commits that are in toCommits but not in fromCommits
-	result := []*object.Commit{}
-	toIter, err = repo.Log(&git.LogOptions{From: *toHash})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get commits from %s: %w", toRef, err)
-	}
-
-	err = toIter.ForEach(func(c *object.Commit) error {
-		if !fromCommits[c.Hash] {
-			result = append(result, c)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to collect commit range: %w", err)
-	}
-
-	// Reverse to get chronological order (oldest first)
-	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
-		result[i], result[j] = result[j], result[i]
-	}
-
-	return result, nil
-}
 
 func generateCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -116,15 +48,8 @@ interactive review mode.`,
 				}
 			} else if len(args) == 0 {
 				return fmt.Errorf("must specify either --since flag or [from] [to] arguments")
-			} else if len(args) == 1 {
-				parts := strings.Split(args[0], "..")
-				if len(parts) == 2 {
-					from, to = parts[0], parts[1]
-				} else {
-					from, to = args[0], "HEAD"
-				}
 			} else {
-				from, to = args[0], args[1]
+				from, to = gitlog.ParseRefArgs(args)
 			}
 
 			if interactive {
@@ -137,7 +62,7 @@ interactive review mode.`,
 				return fmt.Errorf("failed to open repository: %w", err)
 			}
 
-			commits, err := getCommitRange(repo, from, to)
+			commits, err := gitlog.GetCommitRange(repo, from, to)
 			if err != nil {
 				return err
 			}

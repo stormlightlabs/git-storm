@@ -3,6 +3,8 @@ package gitlog
 import (
 	"testing"
 	"time"
+
+	"github.com/stormlightlabs/git-storm/internal/testutils"
 )
 
 func TestConventionalParser_Parse(t *testing.T) {
@@ -10,13 +12,13 @@ func TestConventionalParser_Parse(t *testing.T) {
 	testTime := time.Now()
 
 	tests := []struct {
-		name        string
-		subject     string
-		body        string
-		wantType    string
-		wantScope   string
-		wantDesc    string
-		wantBreak   bool
+		name      string
+		subject   string
+		body      string
+		wantType  string
+		wantScope string
+		wantDesc  string
+		wantBreak bool
 	}{
 		{
 			name:      "simple feat",
@@ -128,9 +130,9 @@ func TestConventionalParser_Categorize(t *testing.T) {
 	parser := &ConventionalParser{}
 
 	tests := []struct {
-		name     string
-		meta     CommitMeta
-		wantCat  string
+		name    string
+		meta    CommitMeta
+		wantCat string
 	}{
 		{
 			name:    "feat -> added",
@@ -216,5 +218,153 @@ func TestConventionalParser_IsValidType(t *testing.T) {
 				t.Errorf("IsValidType() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseRefArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantFrom string
+		wantTo   string
+	}{
+		{
+			name:     "range syntax",
+			args:     []string{"v1.0.0..v1.1.0"},
+			wantFrom: "v1.0.0",
+			wantTo:   "v1.1.0",
+		},
+		{
+			name:     "two separate args",
+			args:     []string{"v1.0.0", "v1.1.0"},
+			wantFrom: "v1.0.0",
+			wantTo:   "v1.1.0",
+		},
+		{
+			name:     "single arg defaults to HEAD",
+			args:     []string{"v1.0.0"},
+			wantFrom: "v1.0.0",
+			wantTo:   "HEAD",
+		},
+		{
+			name:     "empty args",
+			args:     []string{},
+			wantFrom: "",
+			wantTo:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			from, to := ParseRefArgs(tt.args)
+			if from != tt.wantFrom {
+				t.Errorf("ParseRefArgs() from = %v, want %v", from, tt.wantFrom)
+			}
+			if to != tt.wantTo {
+				t.Errorf("ParseRefArgs() to = %v, want %v", to, tt.wantTo)
+			}
+		})
+	}
+}
+
+func TestGetCommitRange(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	commits := testutils.GetCommitHistory(t, repo)
+	if len(commits) < 3 {
+		t.Fatalf("Expected at least 3 commits, got %d", len(commits))
+	}
+
+	oldCommit := commits[len(commits)-2]
+	if err := testutils.CreateTagAtCommit(t, repo, "v1.0.0", oldCommit.Hash.String()); err != nil {
+		t.Fatalf("Failed to create tag: %v", err)
+	}
+
+	testutils.AddCommit(t, repo, "d.txt", "content d", "feat: add d feature")
+	testutils.AddCommit(t, repo, "e.txt", "content e", "fix: fix e bug")
+
+	rangeCommits, err := GetCommitRange(repo, "v1.0.0", "HEAD")
+	if err != nil {
+		t.Fatalf("GetCommitRange() error = %v", err)
+	}
+
+	if len(rangeCommits) < 2 {
+		t.Errorf("Expected at least 2 commits in range, got %d", len(rangeCommits))
+	}
+
+	for i := 1; i < len(rangeCommits); i++ {
+		if rangeCommits[i].Author.When.Before(rangeCommits[i-1].Author.When) {
+			t.Errorf("Commits are not in chronological order")
+		}
+	}
+}
+
+func TestGetCommitRange_SameRef(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	rangeCommits, err := GetCommitRange(repo, "HEAD", "HEAD")
+	if err != nil {
+		t.Fatalf("GetCommitRange() error = %v", err)
+	}
+
+	if len(rangeCommits) != 0 {
+		t.Errorf("Expected 0 commits when from and to are the same, got %d", len(rangeCommits))
+	}
+}
+
+func TestGetFileContent(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	content, err := GetFileContent(repo, "HEAD", "README.md")
+	if err != nil {
+		t.Fatalf("GetFileContent() error = %v", err)
+	}
+
+	if content == "" {
+		t.Errorf("Expected non-empty content for README.md")
+	}
+
+	if content != "# Project\n\nInitial version" {
+		t.Errorf("GetFileContent() content = %v, want %v", content, "# Project\\n\\nInitial version")
+	}
+}
+
+func TestGetFileContent_InvalidFile(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	_, err := GetFileContent(repo, "HEAD", "nonexistent.txt")
+	if err == nil {
+		t.Errorf("Expected error for non-existent file, got nil")
+	}
+}
+
+func TestGetChangedFiles(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	commits := testutils.GetCommitHistory(t, repo)
+	if len(commits) < 2 {
+		t.Fatalf("Expected at least 2 commits, got %d", len(commits))
+	}
+
+	files, err := GetChangedFiles(repo, commits[1].Hash.String(), commits[0].Hash.String())
+	if err != nil {
+		t.Fatalf("GetChangedFiles() error = %v", err)
+	}
+
+	if len(files) == 0 {
+		t.Errorf("Expected at least 1 changed file, got 0")
+	}
+}
+
+func TestGetChangedFiles_NoChanges(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	files, err := GetChangedFiles(repo, "HEAD", "HEAD")
+	if err != nil {
+		t.Fatalf("GetChangedFiles() error = %v", err)
+	}
+
+	if len(files) != 0 {
+		t.Errorf("Expected 0 changed files when refs are the same, got %d", len(files))
 	}
 }
