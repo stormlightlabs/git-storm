@@ -43,19 +43,27 @@ func Added(s string) {
 	fmt.Println(v)
 }
 
+func Addedf(format string, args ...any) {
+	s := fmt.Sprintf(format, args...)
+	v := StyleAdded.Render(s)
+	fmt.Println(v)
+}
+
 func Fixed(s string) {
 	v := StyleFixed.Render(s)
 	fmt.Println(v)
 }
 
 func Styled(st lipgloss.Style) func(s string, a ...any) {
-	return func(s string, a ...any) {
-		fmt.Printf(s, a...)
-	}
+	return func(s string, a ...any) { fmt.Printf(s, a...) }
 }
 
 func Styledln(st lipgloss.Style) func(s string, a ...any) {
-	return func(s string, a ...any) {
-		fmt.Println(fmt.Sprintf(s, a...))
-	}
+	return func(s string, a ...any) { fmt.Println(fmt.Sprintf(s, a...)) }
+}
+
+// Println wraps [fmt.Println] & [fmt.Sprintf]
+func Println(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Println(msg)
 }

@@ -21,13 +21,6 @@ var (
 )
 
 var (
-	fromRef     string
-	toRef       string
-	interactive bool
-	sinceTag    string
-)
-
-var (
 	changeType string
 	scope      string
 	summary    string
@@ -307,27 +300,6 @@ and reviewing pending entries before release.`,
 	root.AddCommand(add, list, review)
 
 	return root
-}
-
-func generateCmd() *cobra.Command {
-	c := &cobra.Command{
-		Use:   "generate [from] [to]",
-		Short: "Generate changelog entries from Git commits",
-		Long: `Scans commits between two Git refs (tags or hashes) and outputs draft
-entries in .changes/. Supports conventional commit parsing and
-interactive review mode.`,
-		Args: cobra.MaximumNArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("generate command not implemented")
-			fmt.Printf("from=%v to=%v interactive=%v sinceTag=%v\n", fromRef, toRef, interactive, sinceTag)
-			return nil
-		},
-	}
-
-	c.Flags().BoolVarP(&interactive, "interactive", "i", false, "Review changes interactively in a TUI")
-	c.Flags().StringVar(&sinceTag, "since", "", "Generate changes since the given tag")
-
-	return c
 }
 
 func main() {

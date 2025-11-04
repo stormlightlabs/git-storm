@@ -1,0 +1,70 @@
+package main
+
+import (
+	"testing"
+
+	"github.com/stormlightlabs/git-storm/internal/testutils"
+)
+
+func TestGetCommitRange(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	// Initial setup creates 3 commits (a.txt, b.txt, c.txt)
+	// Let's add a tag at the second commit
+	commits := testutils.GetCommitHistory(t, repo)
+	if len(commits) < 3 {
+		t.Fatalf("Expected at least 3 commits, got %d", len(commits))
+	}
+
+	// Tag the oldest commit (which is at index len-1 due to reverse order)
+	oldCommit := commits[len(commits)-2] // Second oldest commit
+	if err := testutils.CreateTagAtCommit(t, repo, "v1.0.0", oldCommit.Hash.String()); err != nil {
+		t.Fatalf("Failed to create tag: %v", err)
+	}
+
+	// Add more commits after the tag
+	testutils.AddCommit(t, repo, "d.txt", "content d", "feat: add d feature")
+	testutils.AddCommit(t, repo, "e.txt", "content e", "fix: fix e bug")
+
+	// Get commits between tag and HEAD
+	rangeCommits, err := getCommitRange(repo, "v1.0.0", "HEAD")
+	if err != nil {
+		t.Fatalf("getCommitRange() error = %v", err)
+	}
+
+	// Should include the new commits (d.txt, e.txt) and commits after the tagged one
+	if len(rangeCommits) < 2 {
+		t.Errorf("Expected at least 2 commits in range, got %d", len(rangeCommits))
+	}
+
+	// Verify commits are in chronological order (oldest first)
+	for i := 1; i < len(rangeCommits); i++ {
+		if rangeCommits[i].Author.When.Before(rangeCommits[i-1].Author.When) {
+			t.Errorf("Commits are not in chronological order")
+		}
+	}
+}
+
+func TestGetCommitRange_SameRef(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	// Get commits between HEAD and HEAD (should be empty)
+	rangeCommits, err := getCommitRange(repo, "HEAD", "HEAD")
+	if err != nil {
+		t.Fatalf("getCommitRange() error = %v", err)
+	}
+
+	if len(rangeCommits) != 0 {
+		t.Errorf("Expected 0 commits when from and to are the same, got %d", len(rangeCommits))
+	}
+}
+
+func TestGetCommitRange_InvalidRef(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	// Try to get commits with invalid ref
+	_, err := getCommitRange(repo, "invalid-ref", "HEAD")
+	if err == nil {
+		t.Errorf("Expected error for invalid ref, got nil")
+	}
+}

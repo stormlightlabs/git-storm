@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
 )
 
-// SetupTestRepo creates a git repository in a temporary directory with sample commits.
-// The repository contains multiple commits with different types of changes to support
-// testing diff algorithms, changelog generation, and git log parsing.
+// SetupTestRepo creates a git repository in a temporary directory with sample
+// commits. The repository contains multiple commits with different types of
+// changes to support testing diff algorithms, changelog generation, and git log
+// parsing.
 func SetupTestRepo(t *testing.T) *git.Repository {
 	t.Helper()
 	dir := t.TempDir()
@@ -27,7 +29,6 @@ func SetupTestRepo(t *testing.T) *git.Repository {
 		t.Fatalf("failed to get worktree: %v", err)
 	}
 
-	// Create commits with varied content for diff testing
 	commits := []struct {
 		name, content, message string
 	}{
@@ -72,6 +73,18 @@ func CreateTag(t *testing.T, repo *git.Repository, tagName string) {
 	if err != nil {
 		t.Fatalf("failed to create tag %s: %v", tagName, err)
 	}
+}
+
+// CreateTagAtCommit creates a lightweight tag at a specific commit hash.
+func CreateTagAtCommit(t *testing.T, repo *git.Repository, tagName, commitHash string) error {
+	t.Helper()
+	hash, err := repo.ResolveRevision(plumbing.Revision(commitHash))
+	if err != nil {
+		return err
+	}
+
+	_, err = repo.CreateTag(tagName, *hash, nil)
+	return err
 }
 
 // GetCommitHistory returns all commits in the repository from HEAD backwards.

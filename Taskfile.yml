@@ -3,7 +3,7 @@ version: "3"
 vars:
   BINARY_NAME: storm
   BUILD_DIR: ./tmp
-  MAIN_PATH: ./cmd/main.go
+  MAIN_PATH: ./cmd
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
 
