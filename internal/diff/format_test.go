@@ -3,6 +3,8 @@ package diff
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestSideBySideFormatter_Format(t *testing.T) {
@@ -37,7 +39,7 @@ func TestSideBySideFormatter_Format(t *testing.T) {
 			},
 			width: 80,
 			expect: func(output string) bool {
-				return strings.Contains(output, "new line") && strings.Contains(output, ">")
+				return strings.Contains(output, "new line") && strings.Contains(output, SymbolAdd)
 			},
 		},
 		{
@@ -47,7 +49,7 @@ func TestSideBySideFormatter_Format(t *testing.T) {
 			},
 			width: 80,
 			expect: func(output string) bool {
-				return strings.Contains(output, "old line") && strings.Contains(output, "<")
+				return strings.Contains(output, "old line") && strings.Contains(output, SymbolDeleteLine)
 			},
 		},
 		{
@@ -100,7 +102,7 @@ func TestSideBySideFormatter_CalculatePaneWidth(t *testing.T) {
 			name:            "narrow terminal",
 			terminalWidth:   60,
 			showLineNumbers: true,
-			minExpected:     minPaneWidth,
+			minExpected:     20,
 		},
 		{
 			name:            "without line numbers",
@@ -121,6 +123,52 @@ func TestSideBySideFormatter_CalculatePaneWidth(t *testing.T) {
 
 			if paneWidth < tt.minExpected {
 				t.Errorf("calculatePaneWidth() = %d, expected at least %d", paneWidth, tt.minExpected)
+			}
+
+			usedWidth := gutterWidth
+			if tt.showLineNumbers {
+				usedWidth += 2 * lineNumWidth
+			}
+			totalWidth := usedWidth + (2 * paneWidth)
+			if totalWidth > tt.terminalWidth {
+				t.Errorf("Total width %d exceeds terminal width %d (paneWidth=%d)", totalWidth, tt.terminalWidth, paneWidth)
+			}
+		})
+	}
+}
+
+func TestPadToWidth(t *testing.T) {
+	formatter := &SideBySideFormatter{}
+
+	tests := []struct {
+		name        string
+		input       string
+		targetWidth int
+	}{
+		{
+			name:        "short string gets padded",
+			input:       "hello",
+			targetWidth: 10,
+		},
+		{
+			name:        "exact width unchanged",
+			input:       "hello world",
+			targetWidth: 11,
+		},
+		{
+			name:        "long string gets truncated",
+			input:       "this is a very long string that exceeds the target width",
+			targetWidth: 20,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatter.padToWidth(tt.input, tt.targetWidth)
+
+			resultWidth := lipgloss.Width(result)
+			if resultWidth != tt.targetWidth {
+				t.Errorf("padToWidth() width = %d, expected exactly %d", resultWidth, tt.targetWidth)
 			}
 		})
 	}
@@ -165,13 +213,31 @@ func TestSideBySideFormatter_TruncateContent(t *testing.T) {
 			maxWidth: 10,
 			expected: "hello",
 		},
+		{
+			name:     "very long line",
+			content:  "github.com/charmbracelet/x/ansi v0.10.3 h1:3WoV9XN8uMEnFRZZ+vBPRy59TaI",
+			maxWidth: 40,
+			expected: "",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := formatter.truncateContent(tt.content, tt.maxWidth)
-			if result != tt.expected {
+
+			displayWidth := lipgloss.Width(result)
+			if displayWidth > tt.maxWidth {
+				t.Errorf("truncateContent() display width = %d, exceeds max %d", displayWidth, tt.maxWidth)
+			}
+
+			if tt.expected != "" && result != tt.expected {
 				t.Errorf("truncateContent() = %q, expected %q", result, tt.expected)
+			}
+
+			if lipgloss.Width(tt.content) > tt.maxWidth && tt.maxWidth > 3 {
+				if !strings.HasSuffix(result, "...") {
+					t.Errorf("truncateContent() should end with '...' for long content")
+				}
 			}
 		})
 	}

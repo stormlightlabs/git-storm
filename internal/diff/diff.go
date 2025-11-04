@@ -27,10 +27,11 @@ func (e EditKind) String() string {
 
 // Edit represents a single edit operation in a diff.
 type Edit struct {
-	Kind    EditKind // Equal, Insert, or Delete
-	AIndex  int      // index in original sequence
-	BIndex  int      // index in new sequence
-	Content string   // the line or token
+	Kind       EditKind // Equal, Insert, Delete, or Replace
+	AIndex     int      // index in original sequence (-1 for Insert-only)
+	BIndex     int      // index in new sequence (-1 for Delete-only)
+	Content    string   // the line or token (old content for Replace)
+	NewContent string   // new content (only used for Replace operations)
 }
 
 // Diff represents a generic diffing algorithm.
@@ -348,4 +349,195 @@ func CountEditKinds(edits []Edit) map[EditKind]int {
 		counts[edit.Kind]++
 	}
 	return counts
+}
+
+// MergeReplacements merges Delete+Insert pairs into Replace operations for better side-by-side rendering.
+//
+// This function identifies blocks of Delete and Insert operations and pairs them up based on similarity.
+// When a Delete and Insert represent the same logical line being modified (e.g., version bump),
+// they are merged into a Replace operation that can be rendered on a single line.
+//
+// The function uses a similarity heuristic to determine if a Delete and Insert pair should be merged:
+// - They must share a common prefix of at least 70% of the shorter line's length
+// - This prevents merging unrelated changes (e.g., different package names)
+//
+// The algorithm processes edits in windows, looking ahead up to 10 positions to find matching pairs.
+func MergeReplacements(edits []Edit) []Edit {
+	if len(edits) <= 1 {
+		return edits
+	}
+
+	type mergeInfo struct {
+		partnIndex int // index of the partner edit
+		isDelete   bool
+	}
+
+	merged := make(map[int]mergeInfo)
+	const lookAheadWindow = 50
+
+	for i := range edits {
+		if _, exists := merged[i]; exists || edits[i].Kind != Delete {
+			continue
+		}
+
+		found := false
+		for j := i + 1; j < len(edits) && j < i+lookAheadWindow; j++ {
+			if _, exists := merged[j]; exists || edits[j].Kind != Insert {
+				continue
+			}
+
+			if areSimilarLines(edits[i].Content, edits[j].Content) {
+				merged[i] = mergeInfo{partnIndex: j, isDelete: true}
+				merged[j] = mergeInfo{partnIndex: i, isDelete: false}
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			for j := i - 1; j >= 0 && j >= i-lookAheadWindow; j-- {
+				if _, exists := merged[j]; exists || edits[j].Kind != Insert {
+					continue
+				}
+
+				if areSimilarLines(edits[i].Content, edits[j].Content) {
+					merged[i] = mergeInfo{partnIndex: j, isDelete: true}
+					merged[j] = mergeInfo{partnIndex: i, isDelete: false}
+					break
+				}
+			}
+		}
+	}
+
+	for i := 0; i < len(edits); i++ {
+		if _, exists := merged[i]; exists || edits[i].Kind != Insert {
+			continue
+		}
+
+		for j := max(0, i-lookAheadWindow); j < i; j++ {
+			if _, exists := merged[j]; exists || edits[j].Kind != Delete {
+				continue
+			}
+
+			if areSimilarLines(edits[j].Content, edits[i].Content) {
+				merged[j] = mergeInfo{partnIndex: i, isDelete: true}
+				merged[i] = mergeInfo{partnIndex: j, isDelete: false}
+				break
+			}
+		}
+	}
+
+	type outputEdit struct {
+		edit         Edit
+		origPosition int
+	}
+
+	outputs := make([]outputEdit, 0, len(edits))
+
+	for i := range edits {
+		info, isMerged := merged[i]
+		if !isMerged {
+			outputs = append(outputs, outputEdit{
+				edit:         edits[i],
+				origPosition: i,
+			})
+		} else if info.isDelete {
+			outputs = append(outputs, outputEdit{
+				edit: Edit{
+					Kind:       Replace,
+					AIndex:     edits[i].AIndex,
+					BIndex:     edits[info.partnIndex].BIndex,
+					Content:    edits[i].Content,
+					NewContent: edits[info.partnIndex].Content,
+				},
+				origPosition: i,
+			})
+		}
+	}
+
+	for i := 0; i < len(outputs); i++ {
+		for j := i + 1; j < len(outputs); j++ {
+			ei := outputs[i].edit
+			ej := outputs[j].edit
+
+			// Get effective sort keys
+			keyI := ei.BIndex
+			if keyI == -1 {
+				keyI = ei.AIndex
+			}
+
+			keyJ := ej.BIndex
+			if keyJ == -1 {
+				keyJ = ej.AIndex
+			}
+
+			if keyI > keyJ {
+				outputs[i], outputs[j] = outputs[j], outputs[i]
+			}
+		}
+	}
+
+	result := make([]Edit, 0, len(outputs))
+	for _, out := range outputs {
+		result = append(result, out.edit)
+	}
+
+	return result
+}
+
+// areSimilarLines determines if two lines are similar enough to be considered a replacement.
+//
+// Uses a two-phase similarity check:
+// 1. Common prefix must be at least 70% of the shorter line
+// 2. Remaining suffixes must be at least 60% similar (Levenshtein-like check)
+func areSimilarLines(a, b string) bool {
+	if a == b {
+		return true
+	}
+
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+
+	if minLen == 0 {
+		return false
+	}
+
+	commonPrefix := 0
+	for i := 0; i < minLen; i++ {
+		if a[i] == b[i] {
+			commonPrefix++
+		} else {
+			break
+		}
+	}
+
+	prefixThreshold := float64(minLen) * 0.7
+	if float64(commonPrefix) < prefixThreshold {
+		return false
+	}
+
+	suffixA := a[commonPrefix:]
+	suffixB := b[commonPrefix:]
+
+	suffixLenA := len(suffixA)
+	suffixLenB := len(suffixB)
+
+	if suffixLenA == 0 && suffixLenB == 0 {
+		return true
+	}
+
+	lenDiff := suffixLenA - suffixLenB
+	if lenDiff < 0 {
+		lenDiff = -lenDiff
+	}
+
+	maxSuffixLen := max(suffixLenB, suffixLenA)
+
+	if maxSuffixLen > 0 && float64(lenDiff)/float64(maxSuffixLen) > 0.3 {
+		return false
+	}
+
+	return true
 }

@@ -5,14 +5,31 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wordwrap"
 	"github.com/stormlightlabs/git-storm/internal/style"
 )
 
 const (
-	// Layout constants for side-by-side view
-	lineNumWidth = 4
-	gutterWidth  = 3
-	minPaneWidth = 40
+	SymbolAdd          = "┃" // addition
+	SymbolChange       = "▎" // modification/change
+	SymbolDeleteLine   = "_" // line removed
+	SymbolTopDelete    = "‾" // deletion at top (overline)
+	SymbolChangeDelete = "~" // change + delete (hunk combined)
+	SymbolUntracked    = "┆" // untracked lines/files
+
+	AsciiSymbolAdd          = "|" // addition
+	AsciiSymbolChange       = "|" // modification (same as add fallback)
+	AsciiSymbolDeleteLine   = "-" // deletion line
+	AsciiSymbolTopDelete    = "^" // “top delete” fallback
+	AsciiSymbolChangeDelete = "~" // change+delete still ~
+	AsciiSymbolUntracked    = ":" // untracked fallback
+
+	lineNumWidth        = 4
+	gutterWidth         = 3
+	minPaneWidth        = 40
+	contextLines        = 3  // Lines to show before/after changes
+	minUnchangedToHide  = 10 // Minimum unchanged lines before hiding
+	compressedIndicator = "⋮"
 )
 
 // SideBySideFormatter renders diff edits in a split-pane layout with syntax highlighting.
@@ -21,16 +38,25 @@ type SideBySideFormatter struct {
 	TerminalWidth int
 	// ShowLineNumbers controls whether line numbers are displayed
 	ShowLineNumbers bool
+	// Expanded controls whether to show all unchanged lines or compress them
+	Expanded bool
+	// EnableWordWrap enables word wrapping for long lines
+	EnableWordWrap bool
 }
 
 // Format renders the edits as a styled side-by-side diff string.
 //
 // The left pane shows the old content (deletions and unchanged lines).
 // The right pane shows the new content (insertions and unchanged lines).
-// Line numbers and color coding help visualize the changes.
 func (f *SideBySideFormatter) Format(edits []Edit) string {
 	if len(edits) == 0 {
 		return style.StyleText.Render("No changes")
+	}
+
+	processedEdits := MergeReplacements(edits)
+
+	if !f.Expanded {
+		processedEdits = f.compressUnchangedBlocks(processedEdits)
 	}
 
 	paneWidth := f.calculatePaneWidth()
@@ -38,7 +64,7 @@ func (f *SideBySideFormatter) Format(edits []Edit) string {
 	var sb strings.Builder
 	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7A89")).Faint(true)
 
-	for _, edit := range edits {
+	for _, edit := range processedEdits {
 		left, right := f.renderEdit(edit, paneWidth)
 
 		if f.ShowLineNumbers {
@@ -69,10 +95,18 @@ func (f *SideBySideFormatter) calculatePaneWidth() int {
 	}
 
 	availableWidth := f.TerminalWidth - usedWidth
+	if availableWidth < 0 {
+		availableWidth = 0
+	}
+
 	paneWidth := availableWidth / 2
 
 	if paneWidth < minPaneWidth {
-		paneWidth = minPaneWidth
+		totalNeeded := usedWidth + (2 * minPaneWidth)
+		if totalNeeded > f.TerminalWidth {
+			return paneWidth
+		}
+		return minPaneWidth
 	}
 
 	return paneWidth
@@ -82,30 +116,58 @@ func (f *SideBySideFormatter) calculatePaneWidth() int {
 func (f *SideBySideFormatter) renderEdit(edit Edit, paneWidth int) (left, right string) {
 	content := f.truncateContent(edit.Content, paneWidth)
 
+	if edit.AIndex == -2 && edit.BIndex == -2 {
+		compressedStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6C7A89")).
+			Faint(true).
+			Italic(true)
+		styled := f.padToWidth(compressedStyle.Render(content), paneWidth)
+		return styled, styled
+	}
+
 	switch edit.Kind {
 	case Equal:
-		// Show on both sides with neutral styling
-		leftStyled := style.StyleText.Width(paneWidth).Render(content)
-		rightStyled := style.StyleText.Width(paneWidth).Render(content)
+		leftStyled := f.padToWidth(style.StyleText.Render(content), paneWidth)
+		rightStyled := f.padToWidth(style.StyleText.Render(content), paneWidth)
 		return leftStyled, rightStyled
 
 	case Delete:
-		// Show on left in red, empty right
-		leftStyled := style.StyleRemoved.Width(paneWidth).Render(content)
-		rightStyled := lipgloss.NewStyle().Width(paneWidth).Render("")
+		leftStyled := f.padToWidth(style.StyleRemoved.Render(content), paneWidth)
+		rightStyled := f.padToWidth("", paneWidth)
 		return leftStyled, rightStyled
 
 	case Insert:
-		// Empty left, show on right in green
-		leftStyled := lipgloss.NewStyle().Width(paneWidth).Render("")
-		rightStyled := style.StyleAdded.Width(paneWidth).Render(content)
+		leftStyled := f.padToWidth("", paneWidth)
+		rightStyled := f.padToWidth(style.StyleAdded.Render(content), paneWidth)
+		return leftStyled, rightStyled
+
+	case Replace:
+		newContent := f.truncateContent(edit.NewContent, paneWidth)
+		leftStyled := f.padToWidth(style.StyleRemoved.Render(content), paneWidth)
+		rightStyled := f.padToWidth(style.StyleAdded.Render(newContent), paneWidth)
 		return leftStyled, rightStyled
 
 	default:
-		// Fallback for unknown edit kinds
-		return lipgloss.NewStyle().Width(paneWidth).Render(content),
-			lipgloss.NewStyle().Width(paneWidth).Render(content)
+		return f.padToWidth(content, paneWidth),
+			f.padToWidth(content, paneWidth)
 	}
+}
+
+// padToWidth pads a string with spaces to reach the target width.
+// If the string exceeds the target width, it truncates it.
+func (f *SideBySideFormatter) padToWidth(s string, targetWidth int) string {
+	currentWidth := lipgloss.Width(s)
+
+	if currentWidth > targetWidth {
+		return truncateToWidth(s, targetWidth)
+	}
+
+	if currentWidth == targetWidth {
+		return s
+	}
+
+	padding := strings.Repeat(" ", targetWidth-currentWidth)
+	return s + padding
 }
 
 // renderGutter creates the visual separator between left and right panes.
@@ -115,16 +177,19 @@ func (f *SideBySideFormatter) renderGutter(kind EditKind) string {
 
 	switch kind {
 	case Equal:
-		symbol = " │ "
+		symbol = " " + SymbolUntracked + " "
 		st = lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7A89"))
 	case Delete:
-		symbol = " < "
+		symbol = " " + SymbolDeleteLine + " "
 		st = style.StyleRemoved
 	case Insert:
-		symbol = " > "
+		symbol = " " + SymbolAdd + " "
 		st = style.StyleAdded
+	case Replace:
+		symbol = " " + SymbolChange + " "
+		st = style.StyleChanged
 	default:
-		symbol = " │ "
+		symbol = " " + SymbolUntracked + " "
 		st = lipgloss.NewStyle()
 	}
 
@@ -139,18 +204,131 @@ func (f *SideBySideFormatter) formatLineNum(index int, st lipgloss.Style) string
 	return st.Width(lineNumWidth).Render(fmt.Sprintf("%4d", index+1))
 }
 
-// truncateContent ensures content fits within the pane width.
+// truncateContent ensures content fits within the pane width using proper display width.
 func (f *SideBySideFormatter) truncateContent(content string, maxWidth int) string {
-	// Remove trailing whitespace but preserve leading indentation
 	content = strings.TrimRight(content, " \t\r\n")
 
-	if len(content) <= maxWidth {
+	if f.EnableWordWrap {
+		wrapped := wordwrap.String(content, maxWidth)
+		lines := strings.Split(wrapped, "\n")
+		if len(lines) > 0 {
+			return lines[0]
+		}
+		return wrapped
+	}
+
+	displayWidth := lipgloss.Width(content)
+
+	if displayWidth <= maxWidth {
 		return content
 	}
 
 	if maxWidth <= 3 {
-		return content[:maxWidth]
+		return truncateToWidth(content, maxWidth)
 	}
 
-	return content[:maxWidth-3] + "..."
+	targetWidth := maxWidth - 3
+	truncated := truncateToWidth(content, targetWidth)
+	return truncated + "..."
+}
+
+// truncateToWidth truncates a string to a specific display width.
+func truncateToWidth(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	var result strings.Builder
+	currentWidth := 0
+
+	for _, r := range s {
+		runeWidth := lipgloss.Width(string(r))
+
+		if currentWidth+runeWidth > width {
+			break
+		}
+
+		result.WriteRune(r)
+		currentWidth += runeWidth
+	}
+
+	return result.String()
+}
+
+// compressUnchangedBlocks compresses large blocks of unchanged lines.
+//
+// It keeps contextLines before and after changes, and replaces large
+// blocks of unchanged lines with a single compressed indicator.
+func (f *SideBySideFormatter) compressUnchangedBlocks(edits []Edit) []Edit {
+	if len(edits) == 0 {
+		return edits
+	}
+
+	var result []Edit
+	var unchangedRun []Edit
+
+	for i, edit := range edits {
+		if edit.Kind == Equal {
+			unchangedRun = append(unchangedRun, edit)
+
+			isLast := i == len(edits)-1
+			nextIsChanged := !isLast && edits[i+1].Kind != Equal
+
+			if isLast || nextIsChanged {
+				if len(unchangedRun) >= minUnchangedToHide {
+					for j := 0; j < contextLines && j < len(unchangedRun); j++ {
+						result = append(result, unchangedRun[j])
+					}
+
+					hiddenCount := len(unchangedRun) - (2 * contextLines)
+					if hiddenCount > 0 {
+						result = append(result, Edit{
+							Kind:    Equal,
+							AIndex:  -2,
+							BIndex:  -2,
+							Content: fmt.Sprintf("%s %d unchanged lines", compressedIndicator, hiddenCount),
+						})
+					}
+
+					start := max(len(unchangedRun)-contextLines, contextLines)
+					for j := start; j < len(unchangedRun); j++ {
+						result = append(result, unchangedRun[j])
+					}
+				} else {
+					result = append(result, unchangedRun...)
+				}
+				unchangedRun = nil
+			}
+		} else {
+			if len(unchangedRun) > 0 {
+				if len(unchangedRun) >= minUnchangedToHide {
+					for j := 0; j < contextLines && j < len(unchangedRun); j++ {
+						result = append(result, unchangedRun[j])
+					}
+
+					hiddenCount := len(unchangedRun) - (2 * contextLines)
+					if hiddenCount > 0 {
+						result = append(result, Edit{
+							Kind:    Equal,
+							AIndex:  -2,
+							BIndex:  -2,
+							Content: fmt.Sprintf("%s %d unchanged lines", compressedIndicator, hiddenCount),
+						})
+					}
+
+					start := max(len(unchangedRun)-contextLines, contextLines)
+					for j := start; j < len(unchangedRun); j++ {
+						result = append(result, unchangedRun[j])
+					}
+				} else {
+					result = append(result, unchangedRun...)
+				}
+				unchangedRun = nil
+			}
+
+			result = append(result, edit)
+		}
+	}
+
+	return result
 }

@@ -5,12 +5,20 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/paginator"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stormlightlabs/git-storm/internal/diff"
 	"github.com/stormlightlabs/git-storm/internal/style"
 )
+
+// FileDiff represents a diff for a single file.
+type FileDiff struct {
+	Edits   []diff.Edit
+	OldPath string
+	NewPath string
+}
 
 // DiffModel holds the state for the side-by-side diff viewer.
 type DiffModel struct {
@@ -82,7 +90,7 @@ func NewDiffModel(edits []diff.Edit, oldPath, newPath string, terminalWidth, ter
 
 	content := formatter.Format(edits)
 
-	vp := viewport.New(terminalWidth, terminalHeight-2) // Reserve space for header
+	vp := viewport.New(terminalWidth, terminalHeight-2)
 	vp.SetContent(content)
 
 	return DiffModel{
@@ -189,6 +197,210 @@ func (m DiffModel) renderFooter() string {
 	scrollInfo := fmt.Sprintf("%.0f%%", scrollPercent*100)
 
 	totalWidth := m.viewport.Width
+	helpWidth := lipgloss.Width(helpText)
+	scrollWidth := lipgloss.Width(scrollInfo)
+	padding := totalWidth - helpWidth - scrollWidth - 2
+
+	if padding < 0 {
+		padding = 0
+	}
+
+	return footerStyle.Render(
+		helpText + strings.Repeat(" ", padding) + scrollInfo,
+	)
+}
+
+// MultiFileDiffModel holds the state for viewing diffs across multiple files with pagination.
+type MultiFileDiffModel struct {
+	files     []FileDiff
+	paginator paginator.Model
+	viewport  viewport.Model
+	ready     bool
+	width     int
+	height    int
+	expanded  bool // Controls whether unchanged blocks are compressed
+}
+
+// NewMultiFileDiffModel creates a new multi-file diff viewer with pagination.
+func NewMultiFileDiffModel(files []FileDiff, expanded bool) MultiFileDiffModel {
+	p := paginator.New()
+	p.Type = paginator.Dots
+	p.PerPage = 1
+	p.SetTotalPages(len(files))
+	p.ActiveDot = lipgloss.NewStyle().Foreground(style.AccentBlue).Render("•")
+	p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7A89")).Render("•")
+
+	model := MultiFileDiffModel{
+		files:     files,
+		paginator: p,
+		ready:     false,
+		expanded:  expanded,
+	}
+
+	return model
+}
+
+// Init initializes the multi-file diff model.
+func (m MultiFileDiffModel) Init() tea.Cmd {
+	return nil
+}
+
+// Update handles messages and updates the multi-file diff model state.
+func (m MultiFileDiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, keys.Quit):
+			return m, tea.Quit
+
+		case key.Matches(msg, key.NewBinding(key.WithKeys("e"))):
+			// Toggle expanded/compressed view
+			m.expanded = !m.expanded
+			m.updateViewport()
+
+		case key.Matches(msg, key.NewBinding(key.WithKeys("left", "h"))):
+			m.paginator.PrevPage()
+			m.updateViewport()
+			m.viewport.GotoTop()
+
+		case key.Matches(msg, key.NewBinding(key.WithKeys("right", "l"))):
+			m.paginator.NextPage()
+			m.updateViewport()
+			m.viewport.GotoTop()
+
+		case key.Matches(msg, keys.Up):
+			m.viewport.LineUp(1)
+
+		case key.Matches(msg, keys.Down):
+			m.viewport.LineDown(1)
+
+		case key.Matches(msg, keys.PageUp):
+			m.viewport.ViewUp()
+
+		case key.Matches(msg, keys.PageDown):
+			m.viewport.ViewDown()
+
+		case key.Matches(msg, keys.HalfUp):
+			m.viewport.HalfViewUp()
+
+		case key.Matches(msg, keys.HalfDown):
+			m.viewport.HalfViewDown()
+
+		case key.Matches(msg, keys.Top):
+			m.viewport.GotoTop()
+
+		case key.Matches(msg, keys.Bottom):
+			m.viewport.GotoBottom()
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+		if !m.ready {
+			m.viewport = viewport.New(msg.Width, msg.Height-4)
+			m.ready = true
+		} else {
+			m.viewport.Width = msg.Width
+			m.viewport.Height = msg.Height - 4
+		}
+
+		m.updateViewport()
+	}
+
+	m.viewport, cmd = m.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
+}
+
+// View renders the current view of the multi-file diff viewer.
+func (m MultiFileDiffModel) View() string {
+	if !m.ready || len(m.files) == 0 {
+		return "\n  No files to display"
+	}
+
+	header := m.renderMultiFileHeader()
+	footer := m.renderMultiFileFooter()
+	paginatorView := m.renderPaginator()
+
+	return fmt.Sprintf("%s\n%s\n%s\n%s", header, m.viewport.View(), paginatorView, footer)
+}
+
+// updateViewport updates the viewport content to show the current file.
+func (m *MultiFileDiffModel) updateViewport() {
+	if len(m.files) == 0 {
+		return
+	}
+
+	currentFile := m.files[m.paginator.Page]
+	formatter := &diff.SideBySideFormatter{
+		TerminalWidth:   m.width,
+		ShowLineNumbers: true,
+		Expanded:        m.expanded,
+		EnableWordWrap:  false,
+	}
+
+	content := formatter.Format(currentFile.Edits)
+	m.viewport.SetContent(content)
+}
+
+// renderMultiFileHeader creates the header showing current file paths.
+func (m MultiFileDiffModel) renderMultiFileHeader() string {
+	if len(m.files) == 0 {
+		return ""
+	}
+
+	currentFile := m.files[m.paginator.Page]
+
+	headerStyle := lipgloss.NewStyle().
+		Foreground(style.AccentBlue).
+		Bold(true).
+		Padding(0, 1)
+
+	oldLabel := lipgloss.NewStyle().Foreground(style.RemovedColor).Render("−")
+	newLabel := lipgloss.NewStyle().Foreground(style.AddedColor).Render("+")
+
+	fileIndicator := fmt.Sprintf("[%d/%d]", m.paginator.Page+1, len(m.files))
+
+	return headerStyle.Render(
+		fmt.Sprintf("%s %s %s  %s %s", fileIndicator, oldLabel, currentFile.OldPath, newLabel, currentFile.NewPath),
+	)
+}
+
+// renderPaginator renders the pagination dots.
+func (m MultiFileDiffModel) renderPaginator() string {
+	if len(m.files) <= 1 {
+		return ""
+	}
+
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#6C7A89")).
+		Padding(0, 1).
+		Render(m.paginator.View())
+}
+
+// renderMultiFileFooter creates the footer with help text and scroll position.
+func (m MultiFileDiffModel) renderMultiFileFooter() string {
+	footerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#6C7A89")).
+		Faint(true).
+		Padding(0, 1)
+
+	expandedIndicator := "compressed"
+	if m.expanded {
+		expandedIndicator = "expanded"
+	}
+
+	helpText := fmt.Sprintf("↑/↓: scroll • h/l: files • e: %s • q: quit", expandedIndicator)
+
+	scrollPercent := m.viewport.ScrollPercent()
+	scrollInfo := fmt.Sprintf("%.0f%%", scrollPercent*100)
+
+	totalWidth := m.width
 	helpWidth := lipgloss.Width(helpText)
 	scrollWidth := lipgloss.Width(scrollInfo)
 	padding := totalWidth - helpWidth - scrollWidth - 2
