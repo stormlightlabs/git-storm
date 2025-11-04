@@ -16,11 +16,13 @@ import (
 	"fmt"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-git/go-git/v6"
 	"github.com/spf13/cobra"
 	"github.com/stormlightlabs/git-storm/internal/changeset"
 	"github.com/stormlightlabs/git-storm/internal/gitlog"
 	"github.com/stormlightlabs/git-storm/internal/style"
+	"github.com/stormlightlabs/git-storm/internal/ui"
 )
 
 var (
@@ -52,11 +54,6 @@ interactive review mode.`,
 				from, to = gitlog.ParseRefArgs(args)
 			}
 
-			if interactive {
-				style.Headline("Interactive mode not yet implemented")
-				fmt.Println("Will generate entries in non-interactive mode...")
-			}
-
 			repo, err := git.PlainOpen(repoPath)
 			if err != nil {
 				return fmt.Errorf("failed to open repository: %w", err)
@@ -72,40 +69,84 @@ interactive review mode.`,
 				return nil
 			}
 
-			style.Headline(fmt.Sprintf("Found %d commits between %s and %s", len(commits), from, to))
-
 			parser := &gitlog.ConventionalParser{}
+			var selectedItems []ui.CommitItem
+
+			if interactive {
+				model := ui.NewCommitSelectorModel(commits, from, to, parser)
+				p := tea.NewProgram(model, tea.WithAltScreen())
+
+				finalModel, err := p.Run()
+				if err != nil {
+					return fmt.Errorf("failed to run interactive selector: %w", err)
+				}
+
+				selectorModel, ok := finalModel.(ui.CommitSelectorModel)
+				if !ok {
+					return fmt.Errorf("unexpected model type")
+				}
+
+				if selectorModel.IsCancelled() {
+					style.Headline("Operation cancelled")
+					return nil
+				}
+
+				selectedItems = selectorModel.GetSelectedItems()
+
+				if len(selectedItems) == 0 {
+					style.Headline("No commits selected")
+					return nil
+				}
+
+				style.Headline(fmt.Sprintf("Generating entries for %d selected commits", len(selectedItems)))
+			} else {
+				style.Headline(fmt.Sprintf("Found %d commits between %s and %s", len(commits), from, to))
+
+				for _, commit := range commits {
+					subject := commit.Message
+					body := ""
+					lines := strings.Split(commit.Message, "\n")
+					if len(lines) > 0 {
+						subject = lines[0]
+						if len(lines) > 1 {
+							body = strings.Join(lines[1:], "\n")
+						}
+					}
+
+					meta, err := parser.Parse(commit.Hash.String(), subject, body, commit.Author.When)
+					if err != nil {
+						fmt.Printf("Warning: failed to parse commit %s: %v\n", commit.Hash.String()[:7], err)
+						continue
+					}
+
+					category := parser.Categorize(meta)
+					if category == "" {
+						continue
+					}
+
+					selectedItems = append(selectedItems, ui.CommitItem{
+						Commit:   commit,
+						Meta:     meta,
+						Category: category,
+						Selected: true,
+					})
+				}
+			}
+
 			entries := []changeset.Entry{}
 			skipped := 0
 
-			for _, commit := range commits {
-				subject := commit.Message
-				body := ""
-				lines := strings.Split(commit.Message, "\n")
-				if len(lines) > 0 {
-					subject = lines[0]
-					if len(lines) > 1 {
-						body = strings.Join(lines[1:], "\n")
-					}
-				}
-
-				meta, err := parser.Parse(commit.Hash.String(), subject, body, commit.Author.When)
-				if err != nil {
-					fmt.Printf("Warning: failed to parse commit %s: %v\n", commit.Hash.String()[:7], err)
-					continue
-				}
-
-				category := parser.Categorize(meta)
-				if category == "" {
+			for _, item := range selectedItems {
+				if item.Category == "" {
 					skipped++
 					continue
 				}
 
 				entry := changeset.Entry{
-					Type:     category,
-					Scope:    meta.Scope,
-					Summary:  meta.Description,
-					Breaking: meta.Breaking,
+					Type:     item.Category,
+					Scope:    item.Meta.Scope,
+					Summary:  item.Meta.Description,
+					Breaking: item.Meta.Breaking,
 				}
 
 				entries = append(entries, entry)

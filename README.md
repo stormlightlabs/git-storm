@@ -27,7 +27,7 @@
 │   ├── diff         # Minimal line diff for display and review
 │   ├── changeset    # Manage `.changes/*.md` files
 │   ├── changelog    # Build and update `CHANGELOG.md` sections
-│   ├── tui          # Bubble Tea–based interactive interface
+│   ├── ui           # Bubble Tea–based interactive interface
 │   └── style        # Centralized Lip Gloss palette and formatting
 ├── PROJECT.md
 └── README.md
@@ -75,13 +75,7 @@ Merges `.changes/*.md` into the changelog, writes a new section, and optionally 
 
 3. Consistent Palette
 
-    | Type     | Color     |
-    | -------- | --------- |
-    | Added    | `#10b981` |
-    | Changed  | `#0ea5e9` |
-    | Fixed    | `#f43f5e` |
-    | Removed  | `#f59e0b` |
-    | Security | `#9333ea` |
+    See package style for the color palette.
 
 4. Commands should chain naturally and script cleanly:
 
