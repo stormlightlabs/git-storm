@@ -10,6 +10,8 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/object"
 )
 
+const ShaLen = 7
+
 // CommitKind represents the kind of commit according to Conventional Commits.
 type CommitKind int
 
@@ -91,7 +93,11 @@ type DefaultParser struct{}
 type ConventionalParser struct{}
 
 // Parse parses a conventional commit message into structured metadata.
-// Format: type(scope): description or type(scope)!: description
+//
+// Format:
+//
+//	type(scope): description or type(scope)!: description
+//
 // Breaking changes can also be indicated by BREAKING CHANGE: in footer.
 func (p *ConventionalParser) Parse(hash, subject, body string, date time.Time) (CommitMeta, error) {
 	meta := CommitMeta{
@@ -239,9 +245,9 @@ func (p *ConventionalParser) Categorize(meta CommitMeta) string {
 	case "docs", "style", "test", "build", "ci", "chore":
 		return "changed"
 	case "revert":
-		return "" // Skip reverts
+		return ""
 	default:
-		return "" // Unknown types are skipped
+		return ""
 	}
 }
 
@@ -271,6 +277,7 @@ func splitLines(s string) []string {
 }
 
 // ParseRefArgs parses command arguments to extract from/to refs.
+//
 // Supports both "from..to" and "from to" syntax.
 // If only one arg, treats it as from with to=HEAD.
 func ParseRefArgs(args []string) (from, to string) {

@@ -314,7 +314,7 @@ func (m CommitSelectorModel) renderCommitLine(index int, item CommitItem) string
 		checkbox = "[✓]"
 	}
 
-	shortHash := item.Commit.Hash.String()[:7]
+	shortHash := item.Commit.Hash.String()[:gitlog.ShaLen]
 	subject := item.Meta.Description
 	if subject == "" {
 		subject = strings.Split(item.Commit.Message, "\n")[0]

@@ -30,6 +30,41 @@ var (
 	sinceTag    string
 )
 
+// TODO(determinism): Add deduplication logic using diff-based identity
+//
+// Currently generates duplicate .changes/*.md files when:
+// 1. Running generate multiple times on the same range
+// 2. History is rewritten (rebase/amend) but commit content unchanged
+//
+// Implementation:
+//
+//  1. Before processing commits, load existing entries:
+//     existingEntries := changeset.LoadExisting(".changes/data")
+//     // Returns map[diffHash]Metadata for O(1) lookups
+//
+//  2. For each selected commit:
+//     a. Compute diff hash: diffHash := changeset.ComputeDiffHash(repo, commit)
+//     b. Check if exists: if meta, exists := existingEntries[diffHash]; exists {
+//     - Same commit hash → true duplicate, skip
+//     - Different commit hash → rebased/cherry-picked
+//     * If --update-rebased: update metadata.CommitHash in JSON
+//     * If --skip-rebased: skip (default)
+//     * If --warn-rebased: print warning and skip
+//     }
+//     c. If not exists: create new entry with diff hash as filename
+//
+// 3. Report statistics:
+//   - N new entries created
+//   - M duplicates skipped (same commit)
+//   - K rebased commits detected (same diff, different commit)
+//
+// Flags to add:
+// --update-rebased    Update commit hash for rebased entries
+// --skip-rebased      Skip rebased commits (default)
+// --warn-rebased      Print warnings for rebased commits
+// --force             Regenerate all entries (ignore existing)
+//
+// Related: See internal/changeset/changeset.go TODO for implementation details
 func generateCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "generate [from] [to]",
@@ -65,7 +100,7 @@ interactive review mode.`,
 			}
 
 			if len(commits) == 0 {
-				style.Headline(fmt.Sprintf("No commits found between %s and %s", from, to))
+				style.Headlinef("No commits found between %s and %s", from, to)
 				return nil
 			}
 
@@ -98,9 +133,9 @@ interactive review mode.`,
 					return nil
 				}
 
-				style.Headline(fmt.Sprintf("Generating entries for %d selected commits", len(selectedItems)))
+				style.Headlinef("Generating entries for %d selected commits", len(selectedItems))
 			} else {
-				style.Headline(fmt.Sprintf("Found %d commits between %s and %s", len(commits), from, to))
+				style.Headlinef("Found %d commits between %s and %s", len(commits), from, to)
 
 				for _, commit := range commits {
 					subject := commit.Message
@@ -115,7 +150,7 @@ interactive review mode.`,
 
 					meta, err := parser.Parse(commit.Hash.String(), subject, body, commit.Author.When)
 					if err != nil {
-						fmt.Printf("Warning: failed to parse commit %s: %v\n", commit.Hash.String()[:7], err)
+						style.Println("Warning: failed to parse commit %s: %v", commit.Hash.String()[:gitlog.ShaLen], err)
 						continue
 					}
 
@@ -164,8 +199,8 @@ interactive review mode.`,
 				created++
 			}
 
-			fmt.Println()
-			style.Headline(fmt.Sprintf("Generated %d changelog entries", created))
+			style.Newline()
+			style.Headlinef("Generated %d changelog entries", created)
 			if skipped > 0 {
 				style.Println("Skipped %d commits (reverts or non-matching types)", skipped)
 			}

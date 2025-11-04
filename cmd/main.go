@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/fang"
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
+	"github.com/stormlightlabs/git-storm/internal/style"
 )
 
 var (
@@ -61,58 +62,6 @@ Optionally creates a Git tag and clears the .changes directory.`,
 	return c
 }
 
-func unreleasedCmd() *cobra.Command {
-	add := &cobra.Command{
-		Use:   "add",
-		Short: "Add a new unreleased change entry",
-		Long: `Creates a new .changes/<date>-<summary>.md file with the specified type,
-scope, and summary.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("unreleased add not implemented")
-			fmt.Printf("type=%q scope=%q summary=%q\n", changeType, scope, summary)
-			return nil
-		},
-	}
-	add.Flags().StringVar(&changeType, "type", "", "Type of change (added, changed, fixed, removed, security)")
-	add.Flags().StringVar(&scope, "scope", "", "Optional scope or subsystem name")
-	add.Flags().StringVar(&summary, "summary", "", "Short summary of the change")
-	add.MarkFlagRequired("type")
-	add.MarkFlagRequired("summary")
-
-	list := &cobra.Command{
-		Use:   "list",
-		Short: "List all unreleased changes",
-		Long:  "Prints all pending .changes entries to stdout. Supports JSON output.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("unreleased list not implemented")
-			fmt.Printf("outputJSON=%v\n", outputJSON)
-			return nil
-		},
-	}
-	list.Flags().BoolVar(&outputJSON, "json", false, "Output results as JSON")
-
-	review := &cobra.Command{
-		Use:   "review",
-		Short: "Review unreleased changes interactively",
-		Long: `Launches an interactive Bubble Tea TUI to review, edit, or categorize
-unreleased entries before final release.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("unreleased review not implemented (TUI)")
-			return nil
-		},
-	}
-
-	root := &cobra.Command{
-		Use:   "unreleased",
-		Short: "Manage unreleased changes (.changes directory)",
-		Long: `Work with unreleased change notes. Supports adding, listing,
-and reviewing pending entries before release.`,
-	}
-	root.AddCommand(add, list, review)
-
-	return root
-}
-
 func main() {
 	ctx := context.Background()
 	root := &cobra.Command{
@@ -127,7 +76,7 @@ and can review commits interactively through a TUI.`,
 	root.PersistentFlags().StringVarP(&output, "output", "o", "CHANGELOG.md", "Output changelog file path")
 	root.AddCommand(generateCmd(), unreleasedCmd(), releaseCmd(), diffCmd(), versionCmd())
 
-	if err := fang.Execute(ctx, root); err != nil {
+	if err := fang.Execute(ctx, root, fang.WithColorSchemeFunc(style.NewColorScheme)); err != nil {
 		log.Fatalf("Execution failed: %v", err)
 	}
 }

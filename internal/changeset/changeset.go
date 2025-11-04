@@ -1,6 +1,45 @@
+// TODO(determinism): Make changeset file generation deterministic using diff-based identity
+//
+// Current implementation uses [time.Now] for filenames, causing duplicate entries
+// when generate is run multiple times on the same commit range.
+//
+// Store commit metadata in .changes/data/<diff-hash>.json:
+// - Compute hash of git diff content (not commit message)
+// - Use diff hash as stable identifier across rebases
+// - Store JSON metadata: {commit_hash, diff_hash, type, scope, summary, breaking, author, date}
+// - Generate .changes/<diff-hash-7>-<slug>.md from metadata
+//
+// Implementation:
+// 1. Add DiffHash field to Entry struct
+// 2. Add CommitHash field for tracking source (optional, for reference)
+// 3. Create ComputeDiffHash(commit) function:
+//   - Get commit.Tree() and parent.Tree()
+//   - Compute diff between trees
+//   - Hash the diff content (files changed + line changes)
+//   - Return hex string
+//
+// 4. Update Write() to:
+//   - Accept diff hash as parameter
+//   - Use format: .changes/<diff-hash-7>-<slug>.md
+//   - Write JSON to .changes/data/<diff-hash>.json
+//   - Check if diff hash exists before writing (deduplication)
+//
+// 5. Add Read() function to parse existing entries by diff hash
+//
+// Directory structure:
+//
+//	.changes/
+//	  a1b2c3d-add-authentication.md      # Human-readable entry
+//	  e5f6a7b-fix-memory-leak.md
+//	  data/
+//	    a1b2c3d4e5f6...json              # Full metadata
+//	    e5f6a7b8c9d0...json
+//
+// Related: See cmd/generate.go TODO for deduplication logic
 package changeset
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,7 +75,6 @@ func Write(dir string, entry Entry) (string, error) {
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
 			break
 		}
-		// File exists, add counter
 		filename = fmt.Sprintf("%s-%s-%d.md", timestamp, slug, counter)
 		filePath = filepath.Join(dir, filename)
 		counter++
@@ -56,8 +94,8 @@ func Write(dir string, entry Entry) (string, error) {
 	return filePath, nil
 }
 
-// slugify converts a string into a URL-friendly slug.
-// Converts to lowercase, replaces spaces and special chars with hyphens.
+// slugify converts a string into a URL-friendly slug by converting to lowercase,
+// replaces spaces and special chars with hyphens.
 func slugify(input string) string {
 	s := strings.ToLower(input)
 	reg := regexp.MustCompile(`[^a-z0-9]+`)
@@ -71,4 +109,64 @@ func slugify(input string) string {
 	s = strings.TrimRight(s, "-")
 
 	return s
+}
+
+// EntryWithFile pairs an Entry with its source filename for display/processing.
+type EntryWithFile struct {
+	Entry    Entry
+	Filename string
+}
+
+// List reads all .changes/*.md files and returns their parsed entries.
+func List(dir string) ([]EntryWithFile, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []EntryWithFile{}, nil
+		}
+		return nil, fmt.Errorf("failed to read directory %s: %w", dir, err)
+	}
+
+	var results []EntryWithFile
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+
+		filePath := filepath.Join(dir, entry.Name())
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
+		}
+
+		parsed, err := parseEntry(content)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", entry.Name(), err)
+		}
+
+		results = append(results, EntryWithFile{
+			Entry:    parsed,
+			Filename: entry.Name(),
+		})
+	}
+
+	return results, nil
+}
+
+// parseEntry extracts YAML frontmatter from a markdown file and unmarshals it into an Entry.
+func parseEntry(content []byte) (Entry, error) {
+	var entry Entry
+
+	parts := bytes.Split(content, []byte("---"))
+	if len(parts) < 3 {
+		return entry, fmt.Errorf("invalid frontmatter format: expected ---...--- delimiters")
+	}
+
+	yamlContent := parts[1]
+	if err := yaml.Unmarshal(yamlContent, &entry); err != nil {
+		return entry, fmt.Errorf("failed to unmarshal YAML: %w", err)
+	}
+
+	return entry, nil
 }
