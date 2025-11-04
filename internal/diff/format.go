@@ -114,7 +114,8 @@ func (f *SideBySideFormatter) calculatePaneWidth() int {
 
 // renderEdit formats a single edit operation for both left and right panes.
 func (f *SideBySideFormatter) renderEdit(edit Edit, paneWidth int) (left, right string) {
-	content := f.truncateContent(edit.Content, paneWidth)
+	content := detab(edit.Content, 8)
+	content = f.truncateContent(content, paneWidth)
 
 	if edit.AIndex == -2 && edit.BIndex == -2 {
 		compressedStyle := lipgloss.NewStyle().
@@ -142,7 +143,8 @@ func (f *SideBySideFormatter) renderEdit(edit Edit, paneWidth int) (left, right 
 		return leftStyled, rightStyled
 
 	case Replace:
-		newContent := f.truncateContent(edit.NewContent, paneWidth)
+		newContent := detab(edit.NewContent, 8)
+		newContent = f.truncateContent(newContent, paneWidth)
 		leftStyled := f.padToWidth(style.StyleRemoved.Render(content), paneWidth)
 		rightStyled := f.padToWidth(style.StyleAdded.Render(newContent), paneWidth)
 		return leftStyled, rightStyled
@@ -331,4 +333,12 @@ func (f *SideBySideFormatter) compressUnchangedBlocks(edits []Edit) []Edit {
 	}
 
 	return result
+}
+
+// detab replaces tabs with spaces so alignment stays consistent across terminals.
+func detab(s string, tabWidth int) string {
+	if tabWidth <= 0 {
+		tabWidth = 4
+	}
+	return strings.ReplaceAll(s, "\t", strings.Repeat(" ", tabWidth))
 }

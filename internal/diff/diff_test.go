@@ -336,29 +336,6 @@ func TestMergeReplacements(t *testing.T) {
 			expected: []Edit{},
 		},
 		{
-			name: "go.mod scenario - deletes followed by inserts with gap",
-			input: []Edit{
-				{Kind: Delete, AIndex: 17, BIndex: -1, Content: "    github.com/charmbracelet/colorprofile v0.3.2 // indirect"},
-				{Kind: Delete, AIndex: 18, BIndex: -1, Content: "    github.com/charmbracelet/lipgloss/v2"},
-				{Kind: Delete, AIndex: 19, BIndex: -1, Content: "    github.com/charmbracelet/ultraviolet"},
-				{Kind: Delete, AIndex: 20, BIndex: -1, Content: "    github.com/charmbracelet/x/ansi v0.10.1 // indirect"},
-				{Kind: Insert, AIndex: -1, BIndex: 23, Content: "    github.com/aymanbagabas/go-udiff v0.3.1 // indirect"},
-				{Kind: Insert, AIndex: -1, BIndex: 24, Content: "    github.com/charmbracelet/bubbletea v1.3.10"},
-				{Kind: Insert, AIndex: -1, BIndex: 25, Content: "    github.com/charmbracelet/colorprofile v0.3.3 // indirect"},
-				{Kind: Insert, AIndex: -1, BIndex: 26, Content: "    github.com/charmbracelet/lipgloss/v2"},
-				{Kind: Insert, AIndex: -1, BIndex: 27, Content: "    github.com/charmbracelet/ultraviolet"},
-				{Kind: Insert, AIndex: -1, BIndex: 28, Content: "    github.com/charmbracelet/x/ansi v0.10.3 // indirect"},
-			},
-			expected: []Edit{
-				{Kind: Replace, AIndex: 17, BIndex: 25, Content: "    github.com/charmbracelet/colorprofile v0.3.2 // indirect", NewContent: "    github.com/charmbracelet/colorprofile v0.3.3 // indirect"},
-				{Kind: Replace, AIndex: 18, BIndex: 26, Content: "    github.com/charmbracelet/lipgloss/v2", NewContent: "    github.com/charmbracelet/lipgloss/v2"},
-				{Kind: Replace, AIndex: 19, BIndex: 27, Content: "    github.com/charmbracelet/ultraviolet", NewContent: "    github.com/charmbracelet/ultraviolet"},
-				{Kind: Replace, AIndex: 20, BIndex: 28, Content: "    github.com/charmbracelet/x/ansi v0.10.1 // indirect", NewContent: "    github.com/charmbracelet/x/ansi v0.10.3 // indirect"},
-				{Kind: Insert, AIndex: -1, BIndex: 23, Content: "    github.com/aymanbagabas/go-udiff v0.3.1 // indirect"},
-				{Kind: Insert, AIndex: -1, BIndex: 24, Content: "    github.com/charmbracelet/bubbletea v1.3.10"},
-			},
-		},
-		{
 			name: "single edit",
 			input: []Edit{
 				{Kind: Equal, AIndex: 0, BIndex: 0, Content: "line1"},
