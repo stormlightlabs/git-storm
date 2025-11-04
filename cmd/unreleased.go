@@ -46,9 +46,11 @@ import (
 	"slices"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/stormlightlabs/git-storm/internal/changeset"
 	"github.com/stormlightlabs/git-storm/internal/style"
+	"github.com/stormlightlabs/git-storm/internal/ui"
 )
 
 func unreleasedCmd() *cobra.Command {
@@ -128,7 +130,56 @@ scope, and summary.`,
 		Long: `Launches an interactive Bubble Tea TUI to review, edit, or categorize
 unreleased entries before final release.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("unreleased review not implemented (TUI)")
+			changesDir := ".changes"
+			entries, err := changeset.List(changesDir)
+			if err != nil {
+				return fmt.Errorf("failed to list changelog entries: %w", err)
+			}
+
+			if len(entries) == 0 {
+				style.Println("No unreleased changes found")
+				return nil
+			}
+
+			model := ui.NewChangesetReviewModel(entries)
+			p := tea.NewProgram(model, tea.WithAltScreen())
+
+			finalModel, err := p.Run()
+			if err != nil {
+				return fmt.Errorf("failed to run review TUI: %w", err)
+			}
+
+			reviewModel, ok := finalModel.(ui.ChangesetReviewModel)
+			if !ok {
+				return fmt.Errorf("unexpected model type")
+			}
+
+			if reviewModel.IsCancelled() {
+				style.Headline("Review cancelled")
+				return nil
+			}
+
+			items := reviewModel.GetReviewedItems()
+			deleteCount := 0
+			editCount := 0
+
+			for _, item := range items {
+				switch item.Action {
+				case ui.ActionDelete:
+					deleteCount++
+				case ui.ActionEdit:
+					editCount++
+				}
+			}
+
+			if deleteCount == 0 && editCount == 0 {
+				style.Headline("No changes requested")
+				return nil
+			}
+
+			style.Headlinef("Review completed: %d to delete, %d to edit", deleteCount, editCount)
+			style.Println("Note: Delete and edit actions are not yet implemented")
+
 			return nil
 		},
 	}

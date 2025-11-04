@@ -257,7 +257,6 @@ func (m MultiFileDiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case key.Matches(msg, key.NewBinding(key.WithKeys("e"))):
-			// Toggle expanded/compressed view
 			m.expanded = !m.expanded
 			m.updateViewport()
 
@@ -272,22 +271,22 @@ func (m MultiFileDiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoTop()
 
 		case key.Matches(msg, keys.Up):
-			m.viewport.LineUp(1)
+			m.viewport.ScrollUp(1)
 
 		case key.Matches(msg, keys.Down):
-			m.viewport.LineDown(1)
+			m.viewport.ScrollDown(1)
 
 		case key.Matches(msg, keys.PageUp):
-			m.viewport.ViewUp()
+			m.viewport.PageUp()
 
 		case key.Matches(msg, keys.PageDown):
-			m.viewport.ViewDown()
+			m.viewport.PageDown()
 
 		case key.Matches(msg, keys.HalfUp):
-			m.viewport.HalfViewUp()
+			m.viewport.HalfPageUp()
 
 		case key.Matches(msg, keys.HalfDown):
-			m.viewport.HalfViewDown()
+			m.viewport.HalfPageDown()
 
 		case key.Matches(msg, keys.Top):
 			m.viewport.GotoTop()
