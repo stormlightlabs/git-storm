@@ -40,6 +40,7 @@ import (
 func diffCmd() *cobra.Command {
 	var filePath string
 	var expanded bool
+	var viewName string
 
 	c := &cobra.Command{
 		Use:   "diff <from>..<to> | diff <from> <to>",
@@ -58,18 +59,23 @@ to show all lines. You can also toggle this with 'e' in the TUI.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			from, to := gitlog.ParseRefArgs(args)
-			return runDiff(from, to, filePath, expanded)
+			viewKind, err := parseDiffView(viewName)
+			if err != nil {
+				return err
+			}
+			return runDiff(from, to, filePath, expanded, viewKind)
 		},
 	}
 
 	c.Flags().StringVarP(&filePath, "file", "f", "", "Specific file to diff (optional, shows all files if omitted)")
 	c.Flags().BoolVarP(&expanded, "expanded", "e", false, "Show all unchanged lines (disable compression)")
+	c.Flags().StringVarP(&viewName, "view", "v", "split", "Diff rendering: split or unified")
 
 	return c
 }
 
 // runDiff executes the diff command by reading file contents from two git refs and launching the TUI.
-func runDiff(fromRef, toRef, filePath string, expanded bool) error {
+func runDiff(fromRef, toRef, filePath string, expanded bool, view diff.DiffViewKind) error {
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return fmt.Errorf("failed to open repository: %w", err)
@@ -118,7 +124,7 @@ func runDiff(fromRef, toRef, filePath string, expanded bool) error {
 		})
 	}
 
-	model := ui.NewMultiFileDiffModel(allDiffs, expanded)
+	model := ui.NewMultiFileDiffModel(allDiffs, expanded, view)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
@@ -126,4 +132,15 @@ func runDiff(fromRef, toRef, filePath string, expanded bool) error {
 	}
 
 	return nil
+}
+
+func parseDiffView(viewName string) (diff.DiffViewKind, error) {
+	switch strings.ToLower(strings.TrimSpace(viewName)) {
+	case "", "split", "side-by-side", "s":
+		return diff.ViewSplit, nil
+	case "unified", "u":
+		return diff.ViewUnified, nil
+	default:
+		return 0, fmt.Errorf("invalid view %q: expected one of split, unified", viewName)
+	}
 }

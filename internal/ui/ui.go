@@ -219,10 +219,11 @@ type MultiFileDiffModel struct {
 	width     int
 	height    int
 	expanded  bool // Controls whether unchanged blocks are compressed
+	view      diff.DiffViewKind
 }
 
 // NewMultiFileDiffModel creates a new multi-file diff viewer with pagination.
-func NewMultiFileDiffModel(files []FileDiff, expanded bool) MultiFileDiffModel {
+func NewMultiFileDiffModel(files []FileDiff, expanded bool, view diff.DiffViewKind) MultiFileDiffModel {
 	p := paginator.New()
 	p.Type = paginator.Dots
 	p.PerPage = 1
@@ -235,6 +236,7 @@ func NewMultiFileDiffModel(files []FileDiff, expanded bool) MultiFileDiffModel {
 		paginator: p,
 		ready:     false,
 		expanded:  expanded,
+		view:      view,
 	}
 
 	return model
@@ -335,15 +337,33 @@ func (m *MultiFileDiffModel) updateViewport() {
 		return
 	}
 
-	currentFile := m.files[m.paginator.Page]
-	formatter := &diff.SideBySideFormatter{
-		TerminalWidth:   m.width,
-		ShowLineNumbers: true,
-		Expanded:        m.expanded,
-		EnableWordWrap:  false,
+	width := m.width
+	if width <= 0 {
+		width = 80
 	}
 
-	content := formatter.Format(currentFile.Edits)
+	currentFile := m.files[m.paginator.Page]
+
+	var content string
+
+	switch m.view {
+	case diff.ViewUnified:
+		formatter := &diff.UnifiedFormatter{
+			TerminalWidth:   width,
+			ShowLineNumbers: true,
+			Expanded:        m.expanded,
+			EnableWordWrap:  false,
+		}
+		content = formatter.Format(currentFile.Edits)
+	default:
+		formatter := &diff.SideBySideFormatter{
+			TerminalWidth:   width,
+			ShowLineNumbers: true,
+			Expanded:        m.expanded,
+			EnableWordWrap:  false,
+		}
+		content = formatter.Format(currentFile.Edits)
+	}
 	m.viewport.SetContent(content)
 }
 

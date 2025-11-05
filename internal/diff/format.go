@@ -342,3 +342,232 @@ func detab(s string, tabWidth int) string {
 	}
 	return strings.ReplaceAll(s, "\t", strings.Repeat(" ", tabWidth))
 }
+
+// UnifiedFormatter renders diff edits in a traditional unified diff layout.
+type UnifiedFormatter struct {
+	// TerminalWidth is the total available width for rendering
+	TerminalWidth int
+	// ShowLineNumbers controls whether line numbers are displayed
+	ShowLineNumbers bool
+	// Expanded controls whether to show all unchanged lines or compress them
+	Expanded bool
+	// EnableWordWrap enables word wrapping for long lines
+	EnableWordWrap bool
+}
+
+// Format renders the edits as a styled unified diff string.
+//
+// The output shows deletions with "-" prefix, insertions with "+" prefix, and unchanged lines with " " prefix.
+func (f *UnifiedFormatter) Format(edits []Edit) string {
+	if len(edits) == 0 {
+		return style.StyleText.Render("No changes")
+	}
+
+	processedEdits := MergeReplacements(edits)
+
+	if !f.Expanded {
+		processedEdits = f.compressUnchangedBlocks(processedEdits)
+	}
+
+	contentWidth := f.calculateContentWidth()
+
+	var sb strings.Builder
+	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6C7A89")).Faint(true)
+
+	for _, edit := range processedEdits {
+		line := f.renderEdit(edit, contentWidth, lineNumStyle)
+		sb.WriteString(line)
+		sb.WriteString("\n")
+
+		if edit.Kind == Replace {
+			newLine := f.renderReplaceNew(edit, contentWidth, lineNumStyle)
+			sb.WriteString(newLine)
+			sb.WriteString("\n")
+		}
+	}
+
+	return sb.String()
+}
+
+// calculateContentWidth determines the width available for content.
+func (f *UnifiedFormatter) calculateContentWidth() int {
+	usedWidth := 2
+	if f.ShowLineNumbers {
+		usedWidth += 2*lineNumWidth + 2
+	}
+	return max(f.TerminalWidth-usedWidth, minPaneWidth)
+}
+
+// renderEdit formats a single edit operation.
+func (f *UnifiedFormatter) renderEdit(edit Edit, contentWidth int, lineNumStyle lipgloss.Style) string {
+	var sb strings.Builder
+
+	if edit.AIndex == -2 && edit.BIndex == -2 {
+		compressedStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6C7A89")).
+			Faint(true).
+			Italic(true)
+		if f.ShowLineNumbers {
+			sb.WriteString(lineNumStyle.Width(lineNumWidth).Render(""))
+			sb.WriteString(" ")
+			sb.WriteString(lineNumStyle.Width(lineNumWidth).Render(""))
+			sb.WriteString(" ")
+		}
+		sb.WriteString(compressedStyle.Render(edit.Content))
+		return sb.String()
+	}
+
+	if f.ShowLineNumbers {
+		oldNum := f.formatLineNum(edit.AIndex, lineNumStyle)
+		newNum := f.formatLineNum(edit.BIndex, lineNumStyle)
+		sb.WriteString(oldNum)
+		sb.WriteString(" ")
+		sb.WriteString(newNum)
+		sb.WriteString(" ")
+	}
+
+	content := detab(edit.Content, 8)
+	content = f.truncateContent(content, contentWidth)
+
+	switch edit.Kind {
+	case Equal:
+		sb.WriteString(style.StyleText.Render(" " + content))
+	case Delete:
+		sb.WriteString(style.StyleRemoved.Render("-" + content))
+	case Insert:
+		sb.WriteString(style.StyleAdded.Render("+" + content))
+	case Replace:
+		sb.WriteString(style.StyleRemoved.Render("-" + content))
+	default:
+		sb.WriteString(" " + content)
+	}
+
+	return sb.String()
+}
+
+// renderReplaceNew renders the new content line for a Replace operation.
+func (f *UnifiedFormatter) renderReplaceNew(edit Edit, contentWidth int, lineNumStyle lipgloss.Style) string {
+	var sb strings.Builder
+
+	if f.ShowLineNumbers {
+		sb.WriteString(lineNumStyle.Width(lineNumWidth).Render(""))
+		sb.WriteString(" ")
+		sb.WriteString(f.formatLineNum(edit.BIndex, lineNumStyle))
+		sb.WriteString(" ")
+	}
+
+	content := detab(edit.NewContent, 8)
+	content = f.truncateContent(content, contentWidth)
+	sb.WriteString(style.StyleAdded.Render("+" + content))
+
+	return sb.String()
+}
+
+// formatLineNum renders a line number with styling.
+func (f *UnifiedFormatter) formatLineNum(index int, st lipgloss.Style) string {
+	if index < 0 {
+		return st.Width(lineNumWidth).Render("")
+	}
+	return st.Width(lineNumWidth).Render(fmt.Sprintf("%4d", index+1))
+}
+
+// truncateContent ensures content fits within the available width.
+func (f *UnifiedFormatter) truncateContent(content string, maxWidth int) string {
+	content = strings.TrimRight(content, " \t\r\n")
+
+	if f.EnableWordWrap {
+		wrapped := wordwrap.String(content, maxWidth)
+		lines := strings.Split(wrapped, "\n")
+		if len(lines) > 0 {
+			return lines[0]
+		}
+		return wrapped
+	}
+
+	displayWidth := lipgloss.Width(content)
+
+	if displayWidth <= maxWidth {
+		return content
+	}
+
+	if maxWidth <= 3 {
+		return truncateToWidth(content, maxWidth)
+	}
+
+	return truncateToWidth(content, maxWidth-3) + "..."
+}
+
+// compressUnchangedBlocks compresses large blocks of unchanged lines.
+func (f *UnifiedFormatter) compressUnchangedBlocks(edits []Edit) []Edit {
+	if len(edits) == 0 {
+		return edits
+	}
+
+	var result []Edit
+	var unchangedRun []Edit
+
+	for i, edit := range edits {
+		if edit.Kind == Equal {
+			unchangedRun = append(unchangedRun, edit)
+
+			isLast := i == len(edits)-1
+			nextIsChanged := !isLast && edits[i+1].Kind != Equal
+
+			if isLast || nextIsChanged {
+				if len(unchangedRun) >= minUnchangedToHide {
+					for j := 0; j < contextLines && j < len(unchangedRun); j++ {
+						result = append(result, unchangedRun[j])
+					}
+
+					hiddenCount := len(unchangedRun) - (2 * contextLines)
+					if hiddenCount > 0 {
+						result = append(result, Edit{
+							Kind:    Equal,
+							AIndex:  -2,
+							BIndex:  -2,
+							Content: fmt.Sprintf("%s %d unchanged lines", compressedIndicator, hiddenCount),
+						})
+					}
+
+					start := max(len(unchangedRun)-contextLines, contextLines)
+					for j := start; j < len(unchangedRun); j++ {
+						result = append(result, unchangedRun[j])
+					}
+				} else {
+					result = append(result, unchangedRun...)
+				}
+				unchangedRun = nil
+			}
+		} else {
+			if len(unchangedRun) > 0 {
+				if len(unchangedRun) >= minUnchangedToHide {
+					for j := 0; j < contextLines && j < len(unchangedRun); j++ {
+						result = append(result, unchangedRun[j])
+					}
+
+					hiddenCount := len(unchangedRun) - (2 * contextLines)
+					if hiddenCount > 0 {
+						result = append(result, Edit{
+							Kind:    Equal,
+							AIndex:  -2,
+							BIndex:  -2,
+							Content: fmt.Sprintf("%s %d unchanged lines", compressedIndicator, hiddenCount),
+						})
+					}
+
+					start := max(len(unchangedRun)-contextLines, contextLines)
+					for j := start; j < len(unchangedRun); j++ {
+						result = append(result, unchangedRun[j])
+					}
+				} else {
+					result = append(result, unchangedRun...)
+				}
+				unchangedRun = nil
+			}
+
+			result = append(result, edit)
+		}
+	}
+
+	return result
+}

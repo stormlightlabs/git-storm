@@ -460,7 +460,6 @@ func MergeReplacements(edits []Edit) []Edit {
 			ei := outputs[i].edit
 			ej := outputs[j].edit
 
-			// Get effective sort keys
 			keyI := ei.BIndex
 			if keyI == -1 {
 				keyI = ei.AIndex
@@ -495,10 +494,7 @@ func areSimilarLines(a, b string) bool {
 		return true
 	}
 
-	minLen := len(a)
-	if len(b) < minLen {
-		minLen = len(b)
-	}
+	minLen := min(len(b), len(a))
 
 	if minLen == 0 {
 		return false

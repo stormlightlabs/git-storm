@@ -142,7 +142,7 @@ func TestMultiFileDiffModel_Init(t *testing.T) {
 		},
 	}
 
-	model := NewMultiFileDiffModel(files, false)
+	model := NewMultiFileDiffModel(files, false, diff.ViewSplit)
 
 	cmd := model.Init()
 	if cmd != nil {
@@ -164,7 +164,7 @@ func TestMultiFileDiffModel_View(t *testing.T) {
 		},
 	}
 
-	model := NewMultiFileDiffModel(files, false)
+	model := NewMultiFileDiffModel(files, false, diff.ViewSplit)
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	model = updated.(MultiFileDiffModel)
@@ -198,7 +198,7 @@ func TestMultiFileDiffModel_Pagination(t *testing.T) {
 		},
 	}
 
-	model := NewMultiFileDiffModel(files, false)
+	model := NewMultiFileDiffModel(files, false, diff.ViewSplit)
 
 	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(80, 24))
 
@@ -219,7 +219,7 @@ func TestMultiFileDiffModel_Pagination(t *testing.T) {
 func TestMultiFileDiffModel_EmptyFiles(t *testing.T) {
 	files := []FileDiff{}
 
-	model := NewMultiFileDiffModel(files, false)
+	model := NewMultiFileDiffModel(files, false, diff.ViewSplit)
 
 	view := model.View()
 
@@ -237,7 +237,7 @@ func TestMultiFileDiffModel_SingleFile(t *testing.T) {
 		},
 	}
 
-	model := NewMultiFileDiffModel(files, false)
+	model := NewMultiFileDiffModel(files, false, diff.ViewSplit)
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	model = updated.(MultiFileDiffModel)
@@ -266,7 +266,7 @@ func TestMultiFileDiffModel_UpdateViewport(t *testing.T) {
 		},
 	}
 
-	model := NewMultiFileDiffModel(files, false)
+	model := NewMultiFileDiffModel(files, false, diff.ViewSplit)
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	model = updated.(MultiFileDiffModel)
@@ -294,7 +294,7 @@ func TestMultiFileDiffModel_RenderHeader(t *testing.T) {
 		},
 	}
 
-	model := NewMultiFileDiffModel(files, false)
+	model := NewMultiFileDiffModel(files, false, diff.ViewSplit)
 	header := model.renderMultiFileHeader()
 
 	if !strings.Contains(header, "old/test.go") {
@@ -317,7 +317,7 @@ func TestMultiFileDiffModel_RenderFooter(t *testing.T) {
 		},
 	}
 
-	model := NewMultiFileDiffModel(files, false)
+	model := NewMultiFileDiffModel(files, false, diff.ViewSplit)
 	footer := model.renderMultiFileFooter()
 
 	if !strings.Contains(footer, "h/l") {

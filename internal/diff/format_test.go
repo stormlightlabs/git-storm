@@ -288,3 +288,136 @@ func TestSideBySideFormatter_RenderEdit(t *testing.T) {
 		})
 	}
 }
+
+func TestUnifiedFormatter_Format(t *testing.T) {
+	tests := []struct {
+		name   string
+		edits  []Edit
+		width  int
+		expect func(string) bool
+	}{
+		{
+			name:  "empty edits",
+			edits: []Edit{},
+			width: 80,
+			expect: func(output string) bool {
+				return strings.Contains(output, "No changes")
+			},
+		},
+		{
+			name: "equal lines",
+			edits: []Edit{
+				{Kind: Equal, AIndex: 0, BIndex: 0, Content: "hello world"},
+			},
+			width: 80,
+			expect: func(output string) bool {
+				return strings.Contains(output, " hello world")
+			},
+		},
+		{
+			name: "insert operation",
+			edits: []Edit{
+				{Kind: Insert, AIndex: -1, BIndex: 0, Content: "new line"},
+			},
+			width: 80,
+			expect: func(output string) bool {
+				return strings.Contains(output, "+new line")
+			},
+		},
+		{
+			name: "delete operation",
+			edits: []Edit{
+				{Kind: Delete, AIndex: 0, BIndex: -1, Content: "old line"},
+			},
+			width: 80,
+			expect: func(output string) bool {
+				return strings.Contains(output, "-old line")
+			},
+		},
+		{
+			name: "replace operation",
+			edits: []Edit{
+				{Kind: Replace, AIndex: 0, BIndex: 0, Content: "old content", NewContent: "new content"},
+			},
+			width: 100,
+			expect: func(output string) bool {
+				return strings.Contains(output, "-old content") &&
+					strings.Contains(output, "+new content")
+			},
+		},
+		{
+			name: "mixed operations",
+			edits: []Edit{
+				{Kind: Equal, AIndex: 0, BIndex: 0, Content: "unchanged"},
+				{Kind: Delete, AIndex: 1, BIndex: -1, Content: "removed"},
+				{Kind: Insert, AIndex: -1, BIndex: 1, Content: "added"},
+				{Kind: Equal, AIndex: 2, BIndex: 2, Content: "also unchanged"},
+			},
+			width: 100,
+			expect: func(output string) bool {
+				return strings.Contains(output, " unchanged") &&
+					strings.Contains(output, "-removed") &&
+					strings.Contains(output, "+added") &&
+					strings.Contains(output, " also unchanged")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			formatter := &UnifiedFormatter{
+				TerminalWidth:   tt.width,
+				ShowLineNumbers: true,
+			}
+
+			output := formatter.Format(tt.edits)
+
+			if !tt.expect(output) {
+				t.Errorf("Format() output did not meet expectations.\nGot:\n%s", output)
+			}
+		})
+	}
+}
+
+func TestUnifiedFormatter_CalculateContentWidth(t *testing.T) {
+	tests := []struct {
+		name            string
+		terminalWidth   int
+		showLineNumbers bool
+		minExpected     int
+	}{
+		{
+			name:            "standard width with line numbers",
+			terminalWidth:   120,
+			showLineNumbers: true,
+			minExpected:     40,
+		},
+		{
+			name:            "narrow terminal",
+			terminalWidth:   60,
+			showLineNumbers: true,
+			minExpected:     40,
+		},
+		{
+			name:            "without line numbers",
+			terminalWidth:   100,
+			showLineNumbers: false,
+			minExpected:     40,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			formatter := &UnifiedFormatter{
+				TerminalWidth:   tt.terminalWidth,
+				ShowLineNumbers: tt.showLineNumbers,
+			}
+
+			contentWidth := formatter.calculateContentWidth()
+
+			if contentWidth < tt.minExpected {
+				t.Errorf("calculateContentWidth() = %d, expected at least %d", contentWidth, tt.minExpected)
+			}
+		})
+	}
+}

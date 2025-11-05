@@ -59,10 +59,122 @@ type DiffTool interface {
 }
 
 // UnifiedDiff implements unified view (single linear view with additions & deletions).
-type UnifiedDiff struct{}
+//
+// TODO: Support pluggable diff algorithms beyond Myers.
+type UnifiedDiff struct {
+	// TerminalWidth is the total available width for rendering
+	TerminalWidth int
+	// ShowLineNumbers controls whether line numbers are displayed
+	ShowLineNumbers bool
+	// Expanded controls whether to show all unchanged lines or compress them
+	Expanded bool
+	// EnableWordWrap enables word wrapping for long lines
+	EnableWordWrap bool
+}
+
+// Diff generates a unified diff view from two content readers.
+func (u *UnifiedDiff) Diff(oldContent io.Reader, newContent io.Reader, viewKind DiffViewKind) (DiffResult, error) {
+	oldBytes, err := io.ReadAll(oldContent)
+	if err != nil {
+		return DiffResult{}, err
+	}
+	newBytes, err := io.ReadAll(newContent)
+	if err != nil {
+		return DiffResult{}, err
+	}
+
+	oldLines := splitLines(string(oldBytes))
+	newLines := splitLines(string(newBytes))
+
+	myers := &Myers{}
+	edits, err := myers.Compute(oldLines, newLines)
+	if err != nil {
+		return DiffResult{}, err
+	}
+
+	formatter := &UnifiedFormatter{
+		TerminalWidth:   u.TerminalWidth,
+		ShowLineNumbers: u.ShowLineNumbers,
+		Expanded:        u.Expanded,
+		EnableWordWrap:  u.EnableWordWrap,
+	}
+
+	content := formatter.Format(edits)
+
+	return DiffResult{
+		Content: content,
+		View:    ViewUnified,
+	}, nil
+}
 
 // SplitDiff implements side-by-side view (old on left, new on right).
-type SplitDiff struct{}
+//
+// TODO: Support pluggable diff algorithms beyond Myers.
+type SplitDiff struct {
+	// TerminalWidth is the total available width for rendering
+	TerminalWidth int
+	// ShowLineNumbers controls whether line numbers are displayed
+	ShowLineNumbers bool
+	// Expanded controls whether to show all unchanged lines or compress them
+	Expanded bool
+	// EnableWordWrap enables word wrapping for long lines
+	EnableWordWrap bool
+}
+
+// Diff generates a side-by-side diff view from two content readers.
+func (s *SplitDiff) Diff(oldContent io.Reader, newContent io.Reader, viewKind DiffViewKind) (DiffResult, error) {
+	oldBytes, err := io.ReadAll(oldContent)
+	if err != nil {
+		return DiffResult{}, err
+	}
+	newBytes, err := io.ReadAll(newContent)
+	if err != nil {
+		return DiffResult{}, err
+	}
+
+	oldLines := splitLines(string(oldBytes))
+	newLines := splitLines(string(newBytes))
+
+	myers := &Myers{}
+	edits, err := myers.Compute(oldLines, newLines)
+	if err != nil {
+		return DiffResult{}, err
+	}
+
+	formatter := &SideBySideFormatter{
+		TerminalWidth:   s.TerminalWidth,
+		ShowLineNumbers: s.ShowLineNumbers,
+		Expanded:        s.Expanded,
+		EnableWordWrap:  s.EnableWordWrap,
+	}
+
+	content := formatter.Format(edits)
+
+	return DiffResult{
+		Content: content,
+		View:    ViewSplit,
+	}, nil
+}
+
+// splitLines splits a string into lines, preserving empty lines.
+func splitLines(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	lines := make([]string, 0)
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
+}
 
 // HunkDiff focuses on changed blocks, minimal context.
 type HunkDiff struct{}
