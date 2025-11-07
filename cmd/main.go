@@ -15,19 +15,7 @@ var (
 	output   string
 )
 
-var (
-	changeType string
-	scope      string
-	summary    string
-	outputJSON bool
-)
-
-var (
-	releaseVersion string
-	tagRelease     bool
-	dryRun         bool
-)
-
+// TODO: use ldflags
 const versionString string = "0.1.0-dev"
 
 func versionCmd() *cobra.Command {
@@ -39,27 +27,6 @@ func versionCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-func releaseCmd() *cobra.Command {
-	c := &cobra.Command{
-		Use:   "release",
-		Short: "Promote unreleased changes into a new changelog version",
-		Long: `Merges all .changes entries into CHANGELOG.md under a new version header.
-Optionally creates a Git tag and clears the .changes directory.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("release command not implemented")
-			fmt.Printf("version=%v tag=%v dry-run=%v\n", releaseVersion, tagRelease, dryRun)
-			return nil
-		},
-	}
-
-	c.Flags().StringVar(&releaseVersion, "version", "", "Semantic version for the new release (e.g., 1.3.0)")
-	c.Flags().BoolVar(&tagRelease, "tag", false, "Create a Git tag after release")
-	c.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without writing files")
-	c.MarkFlagRequired("version")
-
-	return c
 }
 
 func main() {

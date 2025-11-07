@@ -54,31 +54,36 @@ import (
 )
 
 func unreleasedCmd() *cobra.Command {
+	var (
+		changeType string
+		scope      string
+		summary    string
+		outputJSON bool
+	)
+
+	changesDir := ".changes"
+	validTypes := []string{"added", "changed", "fixed", "removed", "security"}
+
 	add := &cobra.Command{
 		Use:   "add",
 		Short: "Add a new unreleased change entry",
 		Long: `Creates a new .changes/<date>-<summary>.md file with the specified type,
 scope, and summary.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			validTypes := []string{"added", "changed", "fixed", "removed", "security"}
 			if !slices.Contains(validTypes, changeType) {
 				return fmt.Errorf("invalid type %q: must be one of %s", changeType, strings.Join(validTypes, ", "))
 			}
 
-			entry := changeset.Entry{
+			if filePath, err := changeset.Write(changesDir, changeset.Entry{
 				Type:    changeType,
 				Scope:   scope,
 				Summary: summary,
-			}
-
-			changesDir := ".changes"
-			filePath, err := changeset.Write(changesDir, entry)
-			if err != nil {
+			}); err != nil {
 				return fmt.Errorf("failed to create changelog entry: %w", err)
+			} else {
+				style.Addedf("Created %s", filePath)
+				return nil
 			}
-
-			style.Addedf("Created %s", filePath)
-			return nil
 		},
 	}
 	add.Flags().StringVar(&changeType, "type", "", "Type of change (added, changed, fixed, removed, security)")
@@ -92,7 +97,6 @@ scope, and summary.`,
 		Short: "List all unreleased changes",
 		Long:  "Prints all pending .changes entries to stdout. Supports JSON output.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			changesDir := ".changes"
 			entries, err := changeset.List(changesDir)
 			if err != nil {
 				return fmt.Errorf("failed to list changelog entries: %w", err)
@@ -130,7 +134,6 @@ scope, and summary.`,
 		Long: `Launches an interactive Bubble Tea TUI to review, edit, or categorize
 unreleased entries before final release.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			changesDir := ".changes"
 			entries, err := changeset.List(changesDir)
 			if err != nil {
 				return fmt.Errorf("failed to list changelog entries: %w", err)
@@ -179,7 +182,6 @@ unreleased entries before final release.`,
 
 			style.Headlinef("Review completed: %d to delete, %d to edit", deleteCount, editCount)
 			style.Println("Note: Delete and edit actions are not yet implemented")
-
 			return nil
 		},
 	}
@@ -191,7 +193,6 @@ unreleased entries before final release.`,
 and reviewing pending entries before release.`,
 	}
 	root.AddCommand(add, list, review)
-
 	return root
 }
 

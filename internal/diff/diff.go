@@ -34,6 +34,16 @@ type Edit struct {
 	NewContent string   // new content (only used for Replace operations)
 }
 
+type outputEdit struct {
+	edit         Edit
+	origPosition int
+}
+
+type mergeInfo struct {
+	partnIndex int // index of the partner edit
+	isDelete   bool
+}
+
 // Diff represents a generic diffing algorithm.
 type Diff interface {
 	// Compute computes the edit operations needed to transform a into b.
@@ -367,11 +377,6 @@ func MergeReplacements(edits []Edit) []Edit {
 		return edits
 	}
 
-	type mergeInfo struct {
-		partnIndex int // index of the partner edit
-		isDelete   bool
-	}
-
 	merged := make(map[int]mergeInfo)
 	const lookAheadWindow = 50
 
@@ -409,7 +414,7 @@ func MergeReplacements(edits []Edit) []Edit {
 		}
 	}
 
-	for i := 0; i < len(edits); i++ {
+	for i := range edits {
 		if _, exists := merged[i]; exists || edits[i].Kind != Insert {
 			continue
 		}
@@ -425,11 +430,6 @@ func MergeReplacements(edits []Edit) []Edit {
 				break
 			}
 		}
-	}
-
-	type outputEdit struct {
-		edit         Edit
-		origPosition int
 	}
 
 	outputs := make([]outputEdit, 0, len(edits))
@@ -480,15 +480,15 @@ func MergeReplacements(edits []Edit) []Edit {
 	for _, out := range outputs {
 		result = append(result, out.edit)
 	}
-
 	return result
 }
 
 // areSimilarLines determines if two lines are similar enough to be considered a replacement.
 //
 // Uses a two-phase similarity check:
-// 1. Common prefix must be at least 70% of the shorter line
-// 2. Remaining suffixes must be at least 60% similar (Levenshtein-like check)
+//
+//  1. Common prefix must be at least 70% of the shorter line
+//  2. Remaining suffixes must be at least 60% similar (Levenshtein-like check)
 func areSimilarLines(a, b string) bool {
 	if a == b {
 		return true
@@ -501,7 +501,7 @@ func areSimilarLines(a, b string) bool {
 	}
 
 	commonPrefix := 0
-	for i := 0; i < minLen; i++ {
+	for i := range minLen {
 		if a[i] == b[i] {
 			commonPrefix++
 		} else {
@@ -530,10 +530,8 @@ func areSimilarLines(a, b string) bool {
 	}
 
 	maxSuffixLen := max(suffixLenB, suffixLenA)
-
 	if maxSuffixLen > 0 && float64(lenDiff)/float64(maxSuffixLen) > 0.3 {
 		return false
 	}
-
 	return true
 }
