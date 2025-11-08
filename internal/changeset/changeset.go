@@ -70,13 +70,13 @@ type Entry struct {
 type Metadata struct {
 	CommitHash string    `json:"commit_hash"` // current commit hash
 	DiffHash   string    `json:"diff_hash"`   // stable diff content hash
+	Filename   string    `json:"filename"`    // relative path to .md file
 	Type       string    `json:"type"`
 	Scope      string    `json:"scope"`
 	Summary    string    `json:"summary"`
 	Breaking   bool      `json:"breaking"`
 	Author     string    `json:"author"`
 	Date       time.Time `json:"date"`
-	Filename   string    `json:"filename"` // relative path to .md file
 }
 
 // Write creates a new .changes/<timestamp>-<slug>.md file with YAML frontmatter.
@@ -99,6 +99,34 @@ func Write(dir string, entry Entry) (string, error) {
 		filename = fmt.Sprintf("%s-%s-%d.md", timestamp, slug, counter)
 		filePath = filepath.Join(dir, filename)
 		counter++
+	}
+
+	yamlBytes, err := yaml.Marshal(entry)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal entry to YAML: %w", err)
+	}
+
+	content := fmt.Sprintf("---\n%s---\n", string(yamlBytes))
+
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		return "", fmt.Errorf("failed to write file %s: %w", filePath, err)
+	}
+
+	return filePath, nil
+}
+
+// WritePartial creates a .changes/<filename> file with the specified name and YAML frontmatter.
+// This is used by the `unreleased partial` command to create entries with commit-hash based names.
+// Creates the .changes directory if it doesn't exist.
+func WritePartial(dir string, filename string, entry Entry) (string, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	filePath := filepath.Join(dir, filename)
+
+	if _, err := os.Stat(filePath); err == nil {
+		return "", fmt.Errorf("file %s already exists", filename)
 	}
 
 	yamlBytes, err := yaml.Marshal(entry)

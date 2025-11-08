@@ -513,3 +513,106 @@ func TestDeduplication_RebasedCommit(t *testing.T) {
 		}
 	}
 }
+
+func TestWritePartial(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name        string
+		filename    string
+		entry       Entry
+		wantErr     bool
+		wantType    string
+		wantSummary string
+	}{
+		{
+			name:     "basic partial entry",
+			filename: "abc1234.added.md",
+			entry: Entry{
+				Type:       "added",
+				Scope:      "cli",
+				Summary:    "Add feature",
+				CommitHash: "abc123def456",
+			},
+			wantErr:     false,
+			wantType:    "added",
+			wantSummary: "Add feature",
+		},
+		{
+			name:     "partial with different type",
+			filename: "def5678.fixed.md",
+			entry: Entry{
+				Type:       "fixed",
+				Summary:    "Fix bug",
+				CommitHash: "def5678abc",
+			},
+			wantErr:     false,
+			wantType:    "fixed",
+			wantSummary: "Fix bug",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath, err := WritePartial(tmpDir, tt.filename, tt.entry)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("WritePartial() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr {
+				return
+			}
+
+			expectedPath := filepath.Join(tmpDir, tt.filename)
+			testutils.Expect.Equal(t, filePath, expectedPath, "File path should match expected")
+
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				t.Errorf("File was not created: %s", filePath)
+			}
+
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				t.Fatalf("Failed to read file: %v", err)
+			}
+
+			parts := strings.SplitN(string(content), "---\n", 3)
+			if len(parts) < 3 {
+				t.Fatal("Invalid YAML frontmatter format")
+			}
+
+			var parsed Entry
+			if err := yaml.Unmarshal([]byte(parts[1]), &parsed); err != nil {
+				t.Fatalf("Failed to parse YAML: %v", err)
+			}
+
+			testutils.Expect.Equal(t, parsed.Type, tt.wantType)
+			testutils.Expect.Equal(t, parsed.Summary, tt.wantSummary)
+			testutils.Expect.Equal(t, parsed.CommitHash, tt.entry.CommitHash)
+		})
+	}
+}
+
+func TestWritePartial_DuplicateFilename(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	filename := "abc1234.added.md"
+	entry := Entry{
+		Type:       "added",
+		Summary:    "Test feature",
+		CommitHash: "abc1234",
+	}
+
+	_, err := WritePartial(tmpDir, filename, entry)
+	if err != nil {
+		t.Fatalf("First WritePartial() error = %v", err)
+	}
+
+	_, err = WritePartial(tmpDir, filename, entry)
+	if err == nil {
+		t.Error("Expected error when writing duplicate filename, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("Expected 'already exists' error, got: %v", err)
+	}
+}
