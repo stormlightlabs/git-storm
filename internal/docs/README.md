@@ -1,13 +1,14 @@
 ---
 title: Testing Workflow
 updated: 2025-11-08
-version: 2
+version: 3
 ---
 
 "Ride the lightning."
 
 This document provides a comprehensive testing workflow for the `storm` changelog manager.
-All tests should be run within this repository to validate functionality against real Git history.
+All tests should be run within this repository to validate functionality against real Git
+history.
 
 ## Setup
 
@@ -15,6 +16,99 @@ All tests should be run within this repository to validate functionality against
 # Build the CLI
 task build
 ```
+
+## Non-TTY Environment Handling
+
+Storm automatically detects whether it's running in an interactive terminal (TTY) or a
+non-interactive environment (CI pipelines, scripts, pipes). Commands gracefully degrade
+or provide helpful error messages.
+
+### TTY Detection
+
+The CLI checks for:
+
+- Terminal availability on stdin/stdout
+- Common CI environment variables (GITHUB_ACTIONS, GITLAB_CI, CIRCLECI, etc.)
+
+### Command Behavior
+
+#### `generate --interactive`
+
+**Interactive (TTY):** Launches TUI for commit selection
+**Non-Interactive:** Returns error with suggestion to use non-interactive mode
+
+```bash
+# CI/Non-TTY
+storm generate HEAD~5 HEAD --interactive
+# Error: flag '--interactive' requires an interactive terminal (detected GitHub Actions environment)
+```
+
+**Workaround:**
+
+```bash
+# Use without --interactive flag for automatic processing
+storm generate HEAD~5 HEAD
+```
+
+#### `unreleased review`
+
+**Interactive (TTY):** Launches TUI for reviewing entries
+**Non-Interactive:** Returns error with alternatives
+
+```bash
+# CI/Non-TTY
+storm unreleased review
+# Error: command 'storm unreleased review' requires an interactive terminal (detected CI environment)
+#
+# Alternatives:
+#   - Use 'storm unreleased list' to view entries in plain text
+#   - Use 'storm unreleased list --json' for JSON output
+```
+
+#### `diff`
+
+**Interactive (TTY):** Launches TUI for navigating diffs
+**Non-Interactive:** Outputs plain text diff to stdout
+
+```bash
+# CI/Non-TTY - automatically outputs plain text
+storm diff HEAD~1 HEAD
+# === File 1/3 ===
+# --- HEAD~1:file.go
+# +++ HEAD:file.go
+# [plain text diff output]
+```
+
+### Testing Non-TTY Behavior
+
+#### Simulate CI environment
+
+```bash
+CI=true storm unreleased review
+# Should error with CI-friendly message
+```
+
+#### Pipe output
+
+```bash
+storm diff HEAD~1 HEAD | less
+# Should output plain text diff (not TUI)
+```
+
+#### Redirect to file
+
+```bash
+storm diff HEAD~1 HEAD > changes.diff
+# Should write plain text to file
+```
+
+**Expected Behaviors:**
+
+- Clear error messages indicating TTY requirement
+- Suggestions for alternative commands
+- CI system name detection (e.g., "detected GitHub Actions environment")
+- Automatic fallback to plain text for `diff` command
+- No ANSI escape codes in piped/redirected output
 
 ## Core Workflow
 
@@ -195,6 +289,7 @@ storm generate HEAD~10 HEAD --interactive
 - Allows selection/deselection
 - Creates only selected entries
 - Handles cancellation (Ctrl+C)
+- Errors gracefully in non-TTY with helpful message
 
 #### Since tag
 
@@ -323,7 +418,8 @@ storm unreleased review
 
 - Empty changes directory (should show message, not crash)
 - Corrupted entry file (should handle gracefully)
-- Non-TTY environment (should detect and warn)
+- Non-TTY environment (detects and errors with alternatives)
+- CI environment (detects CI system name in error message)
 - Cancel review (Esc/q) - no changes applied
 - Delete file that no longer exists (should error gracefully)
 - Edit with empty fields (fields preserve original if empty)
@@ -463,8 +559,10 @@ storm diff HEAD~1 HEAD
 
 **Expected:**
 
-- Shows unified diff with syntax highlighting
-- Iceberg theme colors
+- TTY: Launches interactive TUI with navigation
+- Non-TTY: Outputs plain text diff to stdout
+- Shows diff with syntax highlighting (TTY only)
+- Iceberg theme colors (TTY only)
 - Context lines displayed
 - File headers shown
 
@@ -484,3 +582,6 @@ storm diff HEAD~1 HEAD -- "*.go"
 - No changes between refs
 - Binary files (should indicate)
 - Large diffs (should handle gracefully)
+- Non-TTY environment (automatic plain text output)
+- Piped output (plain text format)
+- Redirected to file (plain text format)

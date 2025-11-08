@@ -65,6 +65,7 @@ import (
 	"github.com/stormlightlabs/git-storm/internal/changeset"
 	"github.com/stormlightlabs/git-storm/internal/gitlog"
 	"github.com/stormlightlabs/git-storm/internal/style"
+	"github.com/stormlightlabs/git-storm/internal/tty"
 	"github.com/stormlightlabs/git-storm/internal/ui"
 )
 
@@ -149,6 +150,13 @@ scope, and summary.`,
 		Long: `Launches an interactive Bubble Tea TUI to review, edit, or categorize
 unreleased entries before final release.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !tty.IsInteractive() {
+				return tty.ErrorInteractiveRequired("storm unreleased review", []string{
+					"Use 'storm unreleased list' to view entries in plain text",
+					"Use 'storm unreleased list --json' for JSON output",
+				})
+			}
+
 			entries, err := changeset.List(changesDir)
 			if err != nil {
 				return fmt.Errorf("failed to list changelog entries: %w", err)

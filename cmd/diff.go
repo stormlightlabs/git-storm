@@ -34,6 +34,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stormlightlabs/git-storm/internal/diff"
 	"github.com/stormlightlabs/git-storm/internal/gitlog"
+	"github.com/stormlightlabs/git-storm/internal/tty"
 	"github.com/stormlightlabs/git-storm/internal/ui"
 )
 
@@ -124,6 +125,10 @@ func runDiff(fromRef, toRef, filePath string, expanded bool, view diff.DiffViewK
 		})
 	}
 
+	if !tty.IsInteractive() {
+		return outputPlainDiff(allDiffs, expanded, view)
+	}
+
 	model := ui.NewMultiFileDiffModel(allDiffs, expanded, view)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
@@ -143,4 +148,43 @@ func parseDiffView(viewName string) (diff.DiffViewKind, error) {
 	default:
 		return 0, fmt.Errorf("invalid view %q: expected one of split, unified", viewName)
 	}
+}
+
+// outputPlainDiff outputs diffs in plain text format for non-interactive environments.
+//
+// TODO: move this to package [diff]
+func outputPlainDiff(allDiffs []ui.FileDiff, expanded bool, view diff.DiffViewKind) error {
+	for i, fileDiff := range allDiffs {
+		fmt.Printf("=== File %d/%d ===\n", i+1, len(allDiffs))
+		fmt.Printf("--- %s\n", fileDiff.OldPath)
+		fmt.Printf("+++ %s\n", fileDiff.NewPath)
+		fmt.Println()
+
+		var formatter diff.Formatter
+		switch view {
+		case diff.ViewUnified:
+			formatter = &diff.UnifiedFormatter{
+				TerminalWidth:   80,
+				ShowLineNumbers: true,
+				Expanded:        expanded,
+				EnableWordWrap:  false,
+			}
+		default:
+			formatter = &diff.SideBySideFormatter{
+				TerminalWidth:   80,
+				ShowLineNumbers: true,
+				Expanded:        expanded,
+				EnableWordWrap:  false,
+			}
+		}
+
+		output := formatter.Format(fileDiff.Edits)
+		fmt.Println(output)
+
+		if i < len(allDiffs)-1 {
+			fmt.Println()
+		}
+	}
+
+	return nil
 }

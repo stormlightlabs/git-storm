@@ -22,6 +22,7 @@ import (
 	"github.com/stormlightlabs/git-storm/internal/changeset"
 	"github.com/stormlightlabs/git-storm/internal/gitlog"
 	"github.com/stormlightlabs/git-storm/internal/style"
+	"github.com/stormlightlabs/git-storm/internal/tty"
 	"github.com/stormlightlabs/git-storm/internal/ui"
 )
 
@@ -74,6 +75,10 @@ entries in .changes/. Supports conventional commit parsing and
 interactive review mode.`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if interactive && !tty.IsInteractive() {
+				return tty.ErrorInteractiveFlag("--interactive")
+			}
+
 			var from, to string
 
 			if sinceTag != "" {
@@ -246,6 +251,5 @@ interactive review mode.`,
 
 	c.Flags().BoolVarP(&interactive, "interactive", "i", false, "Review changes interactively in a TUI")
 	c.Flags().StringVar(&sinceTag, "since", "", "Generate changes since the given tag")
-
 	return c
 }

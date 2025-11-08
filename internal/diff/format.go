@@ -32,6 +32,10 @@ const (
 	compressedIndicator = "⋮"
 )
 
+type Formatter interface {
+	Format(edits []Edit) string
+}
+
 // SideBySideFormatter renders diff edits in a split-pane layout with syntax highlighting.
 type SideBySideFormatter struct {
 	// TerminalWidth is the total available width for rendering

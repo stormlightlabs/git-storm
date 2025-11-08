@@ -11,7 +11,10 @@ require (
 	github.com/spf13/cobra v1.10.1
 )
 
-require github.com/goccy/go-yaml v1.18.0
+require (
+	github.com/goccy/go-yaml v1.18.0
+	golang.org/x/term v0.36.0
+)
 
 require github.com/atotto/clipboard v0.1.4 // indirect
 

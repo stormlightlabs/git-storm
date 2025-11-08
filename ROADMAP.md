@@ -108,10 +108,10 @@ Repository tagging and automation-friendly features.
     - [x] `release --dry-run`
     - [x] Show what would be written without writing
     - [x] Display preview of CHANGELOG changes with styled output
-- [ ] Non-TTY environment handling
-    - [ ] Detect TTY availability
-    - [ ] Fallback to non-interactive mode
-    - [ ] CI-friendly error messages
+- [x] Non-TTY environment handling
+    - [x] Detect TTY availability
+    - [x] Fallback to non-interactive mode
+    - [x] CI-friendly error messages
 - [ ] Add pre-commit hook examples
     - [ ] Validate commit message format
     - [ ] Ensure `.changes/` entries exist for features
