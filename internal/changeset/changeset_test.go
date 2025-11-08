@@ -1,12 +1,15 @@
 package changeset
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/goccy/go-yaml"
+	"github.com/stormlightlabs/git-storm/internal/testutils"
 )
 
 func TestWrite(t *testing.T) {
@@ -198,5 +201,315 @@ func TestWrite_DirectoryCreation(t *testing.T) {
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		t.Errorf("File was not created: %s", filePath)
+	}
+}
+
+func TestComputeDiffHash_Stability(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+	commits := testutils.GetCommitHistory(t, repo)
+
+	if len(commits) == 0 {
+		t.Fatal("Expected at least one commit in test repo")
+	}
+
+	commit := commits[0]
+	hash1, err := ComputeDiffHash(commit)
+	if err != nil {
+		t.Fatalf("ComputeDiffHash() error = %v", err)
+	}
+
+	hash2, err := ComputeDiffHash(commit)
+	if err != nil {
+		t.Fatalf("ComputeDiffHash() second call error = %v", err)
+	}
+
+	testutils.Expect.Equal(t, hash1, hash2, "Diff hash should be stable across multiple calls")
+	testutils.Expect.Equal(t, len(hash1), 64, "Diff hash should be 64 characters (SHA256 hex)")
+}
+
+func TestComputeDiffHash_DifferentCommits(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+
+	testutils.AddCommit(t, repo, "file1.txt", "content1", "Add file1")
+	testutils.AddCommit(t, repo, "file2.txt", "content2", "Add file2")
+
+	commits := testutils.GetCommitHistory(t, repo)
+	if len(commits) < 2 {
+		t.Fatal("Expected at least 2 commits")
+	}
+
+	hash1, err := ComputeDiffHash(commits[0])
+	if err != nil {
+		t.Fatalf("ComputeDiffHash() for commit 1 error = %v", err)
+	}
+
+	hash2, err := ComputeDiffHash(commits[1])
+	if err != nil {
+		t.Fatalf("ComputeDiffHash() for commit 2 error = %v", err)
+	}
+
+	testutils.Expect.NotEqual(t, hash1, hash2, "Different commits should have different diff hashes")
+}
+
+func TestWriteWithMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	meta := Metadata{
+		CommitHash: "abc123def456",
+		DiffHash:   "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+		Type:       "added",
+		Scope:      "cli",
+		Summary:    "Add new feature",
+		Breaking:   false,
+		Author:     "Test User",
+		Date:       time.Now(),
+		Filename:   "",
+	}
+
+	filePath, err := WriteWithMetadata(tmpDir, meta)
+	if err != nil {
+		t.Fatalf("WriteWithMetadata() error = %v", err)
+	}
+
+	testutils.Expect.True(t, strings.HasSuffix(filePath, ".md"), "File path should have .md extension")
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		t.Errorf("Markdown file was not created: %s", filePath)
+	}
+
+	filename := filepath.Base(filePath)
+	testutils.Expect.True(t, strings.HasPrefix(filename, meta.DiffHash[:7]), "Filename should start with first 7 chars of diff hash")
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("Failed to read markdown file: %v", err)
+	}
+
+	var parsedEntry Entry
+	parts := strings.SplitN(string(content), "---\n", 3)
+	if len(parts) < 3 {
+		t.Fatal("Invalid YAML frontmatter format")
+	}
+
+	if err := yaml.Unmarshal([]byte(parts[1]), &parsedEntry); err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+
+	testutils.Expect.Equal(t, parsedEntry.Type, meta.Type)
+	testutils.Expect.Equal(t, parsedEntry.Summary, meta.Summary)
+	testutils.Expect.Equal(t, parsedEntry.CommitHash, meta.CommitHash)
+	testutils.Expect.Equal(t, parsedEntry.DiffHash, meta.DiffHash)
+
+	jsonPath := filepath.Join(tmpDir, "data", meta.DiffHash+".json")
+	if _, err := os.Stat(jsonPath); os.IsNotExist(err) {
+		t.Errorf("JSON metadata file was not created: %s", jsonPath)
+	}
+
+	jsonContent, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatalf("Failed to read JSON metadata: %v", err)
+	}
+
+	var parsedMeta Metadata
+	if err := json.Unmarshal(jsonContent, &parsedMeta); err != nil {
+		t.Fatalf("Failed to parse JSON metadata: %v", err)
+	}
+
+	testutils.Expect.Equal(t, parsedMeta.CommitHash, meta.CommitHash)
+	testutils.Expect.Equal(t, parsedMeta.DiffHash, meta.DiffHash)
+	testutils.Expect.Equal(t, parsedMeta.Type, meta.Type)
+	testutils.Expect.Equal(t, parsedMeta.Summary, meta.Summary)
+}
+
+func TestLoadExistingMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	meta1 := Metadata{
+		CommitHash: "abc123",
+		DiffHash:   "hash1111111111111111111111111111111111111111111111111111111111111",
+		Type:       "added",
+		Summary:    "Feature 1",
+		Author:     "User1",
+		Date:       time.Now(),
+	}
+
+	meta2 := Metadata{
+		CommitHash: "def456",
+		DiffHash:   "hash2222222222222222222222222222222222222222222222222222222222222",
+		Type:       "fixed",
+		Summary:    "Fix 1",
+		Author:     "User2",
+		Date:       time.Now(),
+	}
+
+	_, err := WriteWithMetadata(tmpDir, meta1)
+	if err != nil {
+		t.Fatalf("Failed to write meta1: %v", err)
+	}
+
+	_, err = WriteWithMetadata(tmpDir, meta2)
+	if err != nil {
+		t.Fatalf("Failed to write meta2: %v", err)
+	}
+
+	loaded, err := LoadExistingMetadata(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadExistingMetadata() error = %v", err)
+	}
+
+	testutils.Expect.Equal(t, len(loaded), 2, "Should load 2 metadata entries")
+
+	if m, exists := loaded[meta1.DiffHash]; exists {
+		testutils.Expect.Equal(t, m.CommitHash, meta1.CommitHash)
+		testutils.Expect.Equal(t, m.Type, meta1.Type)
+	} else {
+		t.Errorf("meta1 not found in loaded metadata")
+	}
+
+	if m, exists := loaded[meta2.DiffHash]; exists {
+		testutils.Expect.Equal(t, m.CommitHash, meta2.CommitHash)
+		testutils.Expect.Equal(t, m.Type, meta2.Type)
+	} else {
+		t.Errorf("meta2 not found in loaded metadata")
+	}
+}
+
+func TestLoadExistingMetadata_EmptyDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	loaded, err := LoadExistingMetadata(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadExistingMetadata() error = %v", err)
+	}
+
+	testutils.Expect.Equal(t, len(loaded), 0, "Should return empty map for non-existent data directory")
+}
+
+func TestUpdateMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	meta := Metadata{
+		CommitHash: "original123",
+		DiffHash:   "diffhash111111111111111111111111111111111111111111111111111111111",
+		Type:       "added",
+		Summary:    "Feature",
+		Author:     "User",
+		Date:       time.Now(),
+	}
+
+	_, err := WriteWithMetadata(tmpDir, meta)
+	if err != nil {
+		t.Fatalf("Failed to write metadata: %v", err)
+	}
+
+	newCommitHash := "rebased456"
+	err = UpdateMetadata(tmpDir, meta.DiffHash, newCommitHash)
+	if err != nil {
+		t.Fatalf("UpdateMetadata() error = %v", err)
+	}
+
+	loaded, err := LoadExistingMetadata(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadExistingMetadata() error = %v", err)
+	}
+
+	updated, exists := loaded[meta.DiffHash]
+	if !exists {
+		t.Fatal("Updated metadata not found")
+	}
+
+	testutils.Expect.Equal(t, updated.CommitHash, newCommitHash, "CommitHash should be updated")
+	testutils.Expect.Equal(t, updated.Type, meta.Type, "Other fields should remain unchanged")
+	testutils.Expect.Equal(t, updated.Summary, meta.Summary, "Other fields should remain unchanged")
+}
+
+func TestDeduplication_SameCommit(t *testing.T) {
+	tmpDir := t.TempDir()
+	repo := testutils.SetupTestRepo(t)
+	commits := testutils.GetCommitHistory(t, repo)
+	if len(commits) == 0 {
+		t.Fatal("Expected at least one commit")
+	}
+
+	commit := commits[0]
+	diffHash, err := ComputeDiffHash(commit)
+	if err != nil {
+		t.Fatalf("ComputeDiffHash() error = %v", err)
+	}
+
+	meta := Metadata{
+		CommitHash: commit.Hash.String(),
+		DiffHash:   diffHash,
+		Type:       "added",
+		Summary:    "Test feature",
+		Author:     commit.Author.Name,
+		Date:       commit.Author.When,
+	}
+
+	_, err = WriteWithMetadata(tmpDir, meta)
+	if err != nil {
+		t.Fatalf("First WriteWithMetadata() error = %v", err)
+	}
+
+	existing, err := LoadExistingMetadata(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadExistingMetadata() error = %v", err)
+	}
+
+	if existingMeta, exists := existing[diffHash]; exists {
+		testutils.Expect.Equal(t, existingMeta.CommitHash, commit.Hash.String(), "Should detect exact duplicate")
+	} else {
+		t.Error("Metadata should exist in loaded entries")
+	}
+}
+
+func TestDeduplication_RebasedCommit(t *testing.T) {
+	tmpDir := t.TempDir()
+	repo := testutils.SetupTestRepo(t)
+
+	commits := testutils.GetCommitHistory(t, repo)
+	if len(commits) == 0 {
+		t.Fatal("Expected at least one commit")
+	}
+
+	commit := commits[0]
+	diffHash, err := ComputeDiffHash(commit)
+	if err != nil {
+		t.Fatalf("ComputeDiffHash() error = %v", err)
+	}
+
+	originalMeta := Metadata{
+		CommitHash: "original_commit_hash_123",
+		DiffHash:   diffHash,
+		Type:       "added",
+		Summary:    "Test feature",
+		Author:     commit.Author.Name,
+		Date:       commit.Author.When,
+	}
+
+	_, err = WriteWithMetadata(tmpDir, originalMeta)
+	if err != nil {
+		t.Fatalf("WriteWithMetadata() error = %v", err)
+	}
+
+	existing, err := LoadExistingMetadata(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadExistingMetadata() error = %v", err)
+	}
+
+	if existingMeta, exists := existing[diffHash]; exists {
+		if existingMeta.CommitHash != commit.Hash.String() {
+			err = UpdateMetadata(tmpDir, diffHash, commit.Hash.String())
+			if err != nil {
+				t.Fatalf("UpdateMetadata() error = %v", err)
+			}
+
+			updated, err := LoadExistingMetadata(tmpDir)
+			if err != nil {
+				t.Fatalf("LoadExistingMetadata() after update error = %v", err)
+			}
+
+			updatedMeta := updated[diffHash]
+			testutils.Expect.Equal(t, updatedMeta.CommitHash, commit.Hash.String(), "CommitHash should be updated for rebased commit")
+		}
 	}
 }

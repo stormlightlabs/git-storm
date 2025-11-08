@@ -9,7 +9,7 @@ FLAGS
 	--date <YYYY-MM-DD>   Release date (default: today)
 	--clear-changes       Delete .changes/*.md files after successful release
 	--dry-run             Preview changes without writing files
-	--tag                 Create a Git tag after release (not implemented)
+	--tag                 Create an annotated Git tag with release notes
 	--repo <path>         Path to the Git repository (default: .)
 	--output <path>       Output changelog file path (default: CHANGELOG.md)
 */
@@ -19,11 +19,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/spf13/cobra"
 	"github.com/stormlightlabs/git-storm/internal/changelog"
 	"github.com/stormlightlabs/git-storm/internal/changeset"
+	"github.com/stormlightlabs/git-storm/internal/shared"
 	"github.com/stormlightlabs/git-storm/internal/style"
 )
 
@@ -122,7 +126,11 @@ Optionally creates a Git tag and clears the .changes directory.`,
 
 			if tag {
 				style.Newline()
-				style.Println("Note: --tag flag is not yet implemented (Phase 7)")
+				if err := createReleaseTag(repoPath, version, newVersion); err != nil {
+					return fmt.Errorf("failed to create Git tag: %w", err)
+				}
+				tagName := fmt.Sprintf("v%s", version)
+				style.Addedf("✓ Created Git tag %s", tagName)
 			}
 
 			return nil
@@ -133,10 +141,67 @@ Optionally creates a Git tag and clears the .changes directory.`,
 	c.Flags().StringVar(&date, "date", "", "Release date in YYYY-MM-DD format (default: today)")
 	c.Flags().BoolVar(&clearChanges, "clear-changes", false, "Delete .changes/*.md files after successful release")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without writing files")
-	c.Flags().BoolVar(&tag, "tag", false, "Create a Git tag after release (not implemented)")
+	c.Flags().BoolVar(&tag, "tag", false, "Create an annotated Git tag with release notes")
 	c.MarkFlagRequired("version")
 
 	return c
+}
+
+// createReleaseTag creates an annotated Git tag for the release with changelog entries as the message.
+func createReleaseTag(repoPath, version string, versionData *changelog.Version) error {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return fmt.Errorf("failed to get HEAD: %w", err)
+	}
+
+	tagName := fmt.Sprintf("v%s", version)
+
+	_, err = repo.Tag(tagName)
+	if err == nil {
+		return fmt.Errorf("tag %s already exists", tagName)
+	}
+
+	tagMessage := buildTagMessage(version, versionData)
+
+	_, err = repo.CreateTag(tagName, head.Hash(), &git.CreateTagOptions{
+		Message: tagMessage,
+		Tagger: &object.Signature{
+			Name:  "storm",
+			Email: "noreply@storm",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create tag: %w", err)
+	}
+	return nil
+}
+
+// buildTagMessage formats the version's changelog entries into a tag message.
+func buildTagMessage(version string, versionData *changelog.Version) string {
+	var builder strings.Builder
+
+	builder.WriteString(fmt.Sprintf("Release %s\n\n", version))
+
+	for i, section := range versionData.Sections {
+		if i > 0 {
+			builder.WriteString("\n")
+		}
+
+		sectionTitle := shared.TitleCase(section.Type)
+		builder.WriteString(fmt.Sprintf("%s:\n", sectionTitle))
+
+		for _, entry := range section.Entries {
+			builder.WriteString(fmt.Sprintf("- %s\n", entry))
+		}
+	}
+
+	return builder.String()
 }
 
 // displayVersionPreview shows a formatted preview of the version being released.

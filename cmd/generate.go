@@ -168,8 +168,16 @@ interactive review mode.`,
 				}
 			}
 
-			entries := []changeset.Entry{}
+			changesDir := ".changes"
+			existingMetadata, err := changeset.LoadExistingMetadata(changesDir)
+			if err != nil {
+				return fmt.Errorf("failed to load existing metadata: %w", err)
+			}
+
+			created := 0
 			skipped := 0
+			duplicates := 0
+			rebased := 0
 
 			for _, item := range selectedItems {
 				if item.Category == "" {
@@ -177,22 +185,43 @@ interactive review mode.`,
 					continue
 				}
 
-				entry := changeset.Entry{
-					Type:     item.Category,
-					Scope:    item.Meta.Scope,
-					Summary:  item.Meta.Description,
-					Breaking: item.Meta.Breaking,
+				diffHash, err := changeset.ComputeDiffHash(item.Commit)
+				if err != nil {
+					style.Println("Warning: failed to compute diff hash for commit %s: %v", item.Commit.Hash.String()[:7], err)
+					skipped++
+					continue
 				}
 
-				entries = append(entries, entry)
-			}
+				if existing, exists := existingMetadata[diffHash]; exists {
+					if existing.CommitHash == item.Commit.Hash.String() {
+						duplicates++
+						continue
+					} else {
+						if err := changeset.UpdateMetadata(changesDir, diffHash, item.Commit.Hash.String()); err != nil {
+							style.Println("Warning: failed to update metadata for rebased commit: %v", err)
+							continue
+						}
+						style.Println("  Updated rebased commit %s (was %s)", item.Commit.Hash.String()[:7], existing.CommitHash[:7])
+						rebased++
+						continue
+					}
+				}
 
-			changesDir := ".changes"
-			created := 0
-			for _, entry := range entries {
-				filePath, err := changeset.Write(changesDir, entry)
+				meta := changeset.Metadata{
+					CommitHash: item.Commit.Hash.String(),
+					DiffHash:   diffHash,
+					Type:       item.Category,
+					Scope:      item.Meta.Scope,
+					Summary:    item.Meta.Description,
+					Breaking:   item.Meta.Breaking,
+					Author:     item.Commit.Author.Name,
+					Date:       item.Commit.Author.When,
+				}
+
+				filePath, err := changeset.WriteWithMetadata(changesDir, meta)
 				if err != nil {
 					fmt.Printf("Error: failed to write entry: %v\n", err)
+					skipped++
 					continue
 				}
 				style.Addedf("✓ Created %s", filePath)
@@ -200,9 +229,15 @@ interactive review mode.`,
 			}
 
 			style.Newline()
-			style.Headlinef("Generated %d changelog entries", created)
+			style.Headlinef("Generated %d new changelog entries", created)
+			if duplicates > 0 {
+				style.Println("  Skipped %d duplicates", duplicates)
+			}
+			if rebased > 0 {
+				style.Println("  Updated %d rebased commits", rebased)
+			}
 			if skipped > 0 {
-				style.Println("Skipped %d commits (reverts or non-matching types)", skipped)
+				style.Println("  Skipped %d commits (reverts or non-matching types)", skipped)
 			}
 
 			return nil

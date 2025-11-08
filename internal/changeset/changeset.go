@@ -40,22 +40,43 @@ package changeset
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/goccy/go-yaml"
 )
 
 // Entry represents a single changelog entry to be written to .changes/*.md
 type Entry struct {
-	Type     string `yaml:"type"`     // added, changed, fixed, removed, security
-	Scope    string `yaml:"scope"`    // optional scope
-	Summary  string `yaml:"summary"`  // description
-	Breaking bool   `yaml:"breaking"` // true if breaking change
+	Type       string `yaml:"type"`                  // added, changed, fixed, removed, security
+	Scope      string `yaml:"scope"`                 // optional scope
+	Summary    string `yaml:"summary"`               // description
+	Breaking   bool   `yaml:"breaking"`              // true if breaking change
+	CommitHash string `yaml:"commit_hash,omitempty"` // source commit hash (for reference)
+	DiffHash   string `yaml:"diff_hash,omitempty"`   // hash of git diff content (for deduplication)
+}
+
+// Metadata stores complete entry information in .changes/data/*.json for deduplication
+type Metadata struct {
+	CommitHash string    `json:"commit_hash"` // current commit hash
+	DiffHash   string    `json:"diff_hash"`   // stable diff content hash
+	Type       string    `json:"type"`
+	Scope      string    `json:"scope"`
+	Summary    string    `json:"summary"`
+	Breaking   bool      `json:"breaking"`
+	Author     string    `json:"author"`
+	Date       time.Time `json:"date"`
+	Filename   string    `json:"filename"` // relative path to .md file
 }
 
 // Write creates a new .changes/<timestamp>-<slug>.md file with YAML frontmatter.
@@ -91,6 +112,48 @@ func Write(dir string, entry Entry) (string, error) {
 		return "", fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
+	return filePath, nil
+}
+
+// WriteWithMetadata creates a new .changes/<diffHash7>-<slug>.md file with YAML
+// frontmatter and saves corresponding metadata to .changes/data/<diffHash>.json.
+//
+// The filename uses the first 7 characters of the diff hash for human-readable
+// identification, while the JSON metadata file uses the full hash for
+// deduplication lookups.
+func WriteWithMetadata(dir string, meta Metadata) (string, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	diffHashShort := meta.DiffHash[:7]
+	slug := slugify(meta.Summary)
+	filename := fmt.Sprintf("%s-%s.md", diffHashShort, slug)
+	filePath := filepath.Join(dir, filename)
+
+	entry := Entry{
+		Type:       meta.Type,
+		Scope:      meta.Scope,
+		Summary:    meta.Summary,
+		Breaking:   meta.Breaking,
+		CommitHash: meta.CommitHash,
+		DiffHash:   meta.DiffHash,
+	}
+
+	yamlBytes, err := yaml.Marshal(entry)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal entry to YAML: %w", err)
+	}
+
+	content := fmt.Sprintf("---\n%s---\n", string(yamlBytes))
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		return "", fmt.Errorf("failed to write file %s: %w", filePath, err)
+	}
+
+	meta.Filename = filename
+	if err := SaveMetadata(dir, meta); err != nil {
+		return "", fmt.Errorf("failed to save metadata: %w", err)
+	}
 	return filePath, nil
 }
 
@@ -169,4 +232,145 @@ func parseEntry(content []byte) (Entry, error) {
 	}
 
 	return entry, nil
+}
+
+// ComputeDiffHash calculates a stable hash of the commit's diff content. This
+// hash is independent of the commit hash, so rebased commits with identical
+// diffs will produce the same hash.
+//
+// The hash is computed from:
+//   - Sorted list of changed file paths
+//   - For each file: the full diff content (additions and deletions)
+func ComputeDiffHash(commit *object.Commit) (string, error) {
+	tree, err := commit.Tree()
+	if err != nil {
+		return "", fmt.Errorf("failed to get commit tree: %w", err)
+	}
+
+	var parentTree *object.Tree
+	if commit.NumParents() > 0 {
+		parent, err := commit.Parent(0)
+		if err != nil {
+			return "", fmt.Errorf("failed to get parent commit: %w", err)
+		}
+		parentTree, err = parent.Tree()
+		if err != nil {
+			return "", fmt.Errorf("failed to get parent tree: %w", err)
+		}
+	}
+
+	var changes object.Changes
+	if parentTree != nil {
+		changes, err = parentTree.Diff(tree)
+		if err != nil {
+			return "", fmt.Errorf("failed to compute diff: %w", err)
+		}
+	} else {
+		emptyTree := &object.Tree{}
+		changes, err = object.DiffTreeWithOptions(context.TODO(), emptyTree, tree, &object.DiffTreeOptions{})
+		if err != nil {
+			return "", fmt.Errorf("failed to compute diff for initial commit: %w", err)
+		}
+	}
+
+	var diffParts []string
+	for _, change := range changes {
+		patch, err := change.Patch()
+		if err != nil {
+			return "", fmt.Errorf("failed to get patch for %s: %w", change.To.Name, err)
+		}
+
+		diffParts = append(diffParts, fmt.Sprintf("FILE:%s\n%s", change.To.Name, patch.String()))
+	}
+
+	sort.Strings(diffParts)
+
+	hasher := sha256.New()
+	for _, part := range diffParts {
+		hasher.Write([]byte(part))
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// SaveMetadata writes metadata to .changes/data/<diffHash>.json
+func SaveMetadata(dir string, meta Metadata) error {
+	dataDir := filepath.Join(dir, "data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	filePath := filepath.Join(dataDir, meta.DiffHash+".json")
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write metadata file: %w", err)
+	}
+
+	return nil
+}
+
+// LoadExistingMetadata reads all metadata files from .changes/data/*.json
+// and creates a map of diff hash -> metadata for O(1) lookups.
+func LoadExistingMetadata(dir string) (map[string]Metadata, error) {
+	dataDir := filepath.Join(dir, "data")
+	result := make(map[string]Metadata)
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return result, nil
+		}
+		return nil, fmt.Errorf("failed to read data directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+
+		filePath := filepath.Join(dataDir, entry.Name())
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read metadata file %s: %w", entry.Name(), err)
+		}
+
+		var meta Metadata
+		if err := json.Unmarshal(data, &meta); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal metadata from %s: %w", entry.Name(), err)
+		}
+
+		result[meta.DiffHash] = meta
+	}
+	return result, nil
+}
+
+// UpdateMetadata updates an existing metadata file with a new commit hash when
+// a rebased commit is detected (same diff, different commit hash).
+func UpdateMetadata(dir string, diffHash string, newCommitHash string) error {
+	dataDir := filepath.Join(dir, "data")
+	filePath := filepath.Join(dataDir, diffHash+".json")
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read existing metadata: %w", err)
+	}
+
+	var meta Metadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+
+	meta.CommitHash = newCommitHash
+
+	updatedData, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated metadata: %w", err)
+	}
+
+	if err := os.WriteFile(filePath, updatedData, 0644); err != nil {
+		return fmt.Errorf("failed to write updated metadata: %w", err)
+	}
+	return nil
 }

@@ -432,3 +432,249 @@ func TestMergeReplacements(t *testing.T) {
 		})
 	}
 }
+
+func TestDiff_Compute_Unicode(t *testing.T) {
+	a := []string{"Emoji 🚀", "Regular text"}
+	b := []string{"Emoji 🎉", "Regular text"}
+
+	for _, alg := range diffAlgorithms {
+		t.Run(alg.name, func(t *testing.T) {
+			m := alg.new()
+			edits, err := m.Compute(a, b)
+			if err != nil {
+				t.Fatalf("unexpected error with unicode: %v", err)
+			}
+
+			reconstructed := ApplyEdits(a, edits)
+			if len(reconstructed) != len(b) {
+				t.Fatalf("reconstructed length %d != expected %d", len(reconstructed), len(b))
+			}
+			for i := range reconstructed {
+				if reconstructed[i] != b[i] {
+					t.Errorf("line %d: %q != %q", i, reconstructed[i], b[i])
+				}
+			}
+		})
+	}
+}
+
+func TestDiff_Compute_VeryLongLines(t *testing.T) {
+	longLine1 := strings.Repeat("a", 5000)
+	longLine2 := strings.Repeat("b", 5000)
+	longLine3 := strings.Repeat("c", 5000)
+
+	a := []string{longLine1, longLine2}
+	b := []string{longLine1, longLine3}
+
+	for _, alg := range diffAlgorithms {
+		t.Run(alg.name, func(t *testing.T) {
+			m := alg.new()
+			edits, err := m.Compute(a, b)
+			if err != nil {
+				t.Fatalf("unexpected error with long lines: %v", err)
+			}
+
+			reconstructed := ApplyEdits(a, edits)
+			if len(reconstructed) != len(b) {
+				t.Fatalf("reconstructed length %d != expected %d", len(reconstructed), len(b))
+			}
+			for i := range reconstructed {
+				if reconstructed[i] != b[i] {
+					t.Errorf("line %d: lengths %d != %d", i, len(reconstructed[i]), len(b[i]))
+				}
+			}
+		})
+	}
+}
+
+func TestDiff_Compute_WhitespaceOnly(t *testing.T) {
+	a := []string{"line1", "  ", "line3"}
+	b := []string{"line1", "    ", "line3"}
+
+	for _, alg := range diffAlgorithms {
+		t.Run(alg.name, func(t *testing.T) {
+			m := alg.new()
+			edits, err := m.Compute(a, b)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			reconstructed := ApplyEdits(a, edits)
+			if len(reconstructed) != len(b) {
+				t.Fatalf("reconstructed length %d != expected %d", len(reconstructed), len(b))
+			}
+			for i := range reconstructed {
+				if reconstructed[i] != b[i] {
+					t.Errorf("line %d: %q != %q", i, reconstructed[i], b[i])
+				}
+			}
+		})
+	}
+}
+
+func TestDiff_Compute_AlternatingLines(t *testing.T) {
+	a := []string{"a1", "a2", "a3", "a4", "a5"}
+	b := []string{"b1", "b2", "b3", "b4", "b5"}
+
+	for _, alg := range diffAlgorithms {
+		t.Run(alg.name, func(t *testing.T) {
+			m := alg.new()
+			edits, err := m.Compute(a, b)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			reconstructed := ApplyEdits(a, edits)
+			if len(reconstructed) != len(b) {
+				t.Fatalf("reconstructed length %d != expected %d", len(reconstructed), len(b))
+			}
+			for i := range reconstructed {
+				if reconstructed[i] != b[i] {
+					t.Errorf("line %d: %q != %q", i, reconstructed[i], b[i])
+				}
+			}
+		})
+	}
+}
+
+func TestDiff_CrossValidation(t *testing.T) {
+	testCases := []struct {
+		name string
+		a    []string
+		b    []string
+	}{
+		{"simple", []string{"a", "b", "c"}, []string{"a", "x", "c"}},
+		{"complex", []string{"1", "2", "3", "4"}, []string{"1", "x", "y", "4"}},
+		{"empty to content", []string{}, []string{"a", "b", "c"}},
+		{"content to empty", []string{"a", "b", "c"}, []string{}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			lcs := &LCS{}
+			myers := &Myers{}
+
+			lcsEdits, err := lcs.Compute(tc.a, tc.b)
+			if err != nil {
+				t.Fatalf("LCS error: %v", err)
+			}
+
+			myersEdits, err := myers.Compute(tc.a, tc.b)
+			if err != nil {
+				t.Fatalf("Myers error: %v", err)
+			}
+
+			lcsResult := ApplyEdits(tc.a, lcsEdits)
+			myersResult := ApplyEdits(tc.a, myersEdits)
+
+			if len(lcsResult) != len(tc.b) {
+				t.Errorf("LCS reconstruction length mismatch: %d != %d", len(lcsResult), len(tc.b))
+			}
+			if len(myersResult) != len(tc.b) {
+				t.Errorf("Myers reconstruction length mismatch: %d != %d", len(myersResult), len(tc.b))
+			}
+
+			for i := range tc.b {
+				if i < len(lcsResult) && lcsResult[i] != tc.b[i] {
+					t.Errorf("LCS line %d: %q != %q", i, lcsResult[i], tc.b[i])
+				}
+				if i < len(myersResult) && myersResult[i] != tc.b[i] {
+					t.Errorf("Myers line %d: %q != %q", i, myersResult[i], tc.b[i])
+				}
+			}
+		})
+	}
+}
+
+func TestDiff_EditIndicesValid(t *testing.T) {
+	a := []string{"line1", "line2", "line3"}
+	b := []string{"line1", "modified", "line3", "line4"}
+
+	for _, alg := range diffAlgorithms {
+		t.Run(alg.name, func(t *testing.T) {
+			m := alg.new()
+			edits, err := m.Compute(a, b)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			for i, edit := range edits {
+				switch edit.Kind {
+				case Equal:
+					if edit.AIndex < 0 || edit.AIndex >= len(a) {
+						t.Errorf("edit %d: invalid AIndex %d (len(a)=%d)", i, edit.AIndex, len(a))
+					}
+					if edit.BIndex < 0 || edit.BIndex >= len(b) {
+						t.Errorf("edit %d: invalid BIndex %d (len(b)=%d)", i, edit.BIndex, len(b))
+					}
+				case Delete:
+					if edit.AIndex < 0 || edit.AIndex >= len(a) {
+						t.Errorf("edit %d: invalid AIndex %d for Delete", i, edit.AIndex)
+					}
+				case Insert:
+					if edit.BIndex < 0 || edit.BIndex >= len(b) {
+						t.Errorf("edit %d: invalid BIndex %d for Insert", i, edit.BIndex)
+					}
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkLCS_SmallInput(b *testing.B) {
+	a := []string{"line1", "line2", "line3", "line4", "line5"}
+	c := []string{"line1", "modified", "line3", "line4", "added"}
+	lcs := &LCS{}
+
+	for b.Loop() {
+		_, _ = lcs.Compute(a, c)
+	}
+}
+
+func BenchmarkMyers_SmallInput(b *testing.B) {
+	a := []string{"line1", "line2", "line3", "line4", "line5"}
+	c := []string{"line1", "modified", "line3", "line4", "added"}
+	myers := &Myers{}
+
+	for b.Loop() {
+		_, _ = myers.Compute(a, c)
+	}
+}
+
+func BenchmarkLCS_MediumInput(b *testing.B) {
+	a := make([]string, 50)
+	c := make([]string, 50)
+	for i := range 50 {
+		a[i] = "line" + strings.Repeat("x", i)
+		if i%5 == 0 {
+			c[i] = "modified" + strings.Repeat("y", i)
+		} else {
+			c[i] = a[i]
+		}
+	}
+
+	lcs := &LCS{}
+
+	for b.Loop() {
+		_, _ = lcs.Compute(a, c)
+	}
+}
+
+func BenchmarkMyers_MediumInput(b *testing.B) {
+	a := make([]string, 50)
+	c := make([]string, 50)
+	for i := range 50 {
+		a[i] = "line" + strings.Repeat("x", i)
+		if i%5 == 0 {
+			c[i] = "modified" + strings.Repeat("y", i)
+		} else {
+			c[i] = a[i]
+		}
+	}
+
+	myers := &Myers{}
+
+	for b.Loop() {
+		_, _ = myers.Compute(a, c)
+	}
+}
