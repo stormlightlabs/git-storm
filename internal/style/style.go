@@ -58,6 +58,18 @@ func Addedf(format string, args ...any) {
 	fmt.Println(v)
 }
 
+func Successf(format string, args ...any) {
+	s := fmt.Sprintf(format, args...)
+	v := StyleAdded.Render(s)
+	fmt.Println(v)
+}
+
+func Warningf(format string, args ...any) {
+	s := fmt.Sprintf(format, args...)
+	v := StyleSecurity.Render(s)
+	fmt.Println(v)
+}
+
 func Newline() { fmt.Println() }
 
 func Fixed(s string) {

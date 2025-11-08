@@ -402,3 +402,38 @@ func UpdateMetadata(dir string, diffHash string, newCommitHash string) error {
 	}
 	return nil
 }
+
+// Delete removes a changelog entry file from the .changes/ directory.
+func Delete(dir, filename string) error {
+	filePath := filepath.Join(dir, filename)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return fmt.Errorf("file %s does not exist", filename)
+	}
+
+	if err := os.Remove(filePath); err != nil {
+		return fmt.Errorf("failed to delete file %s: %w", filename, err)
+	}
+	return nil
+}
+
+// Update modifies an existing changelog entry file with new values.
+func Update(dir, filename string, entry Entry) error {
+	filePath := filepath.Join(dir, filename)
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return fmt.Errorf("file %s does not exist", filename)
+	}
+
+	yamlBytes, err := yaml.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("failed to marshal entry to YAML: %w", err)
+	}
+
+	content := fmt.Sprintf("---\n%s---\n", string(yamlBytes))
+
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to update file %s: %w", filename, err)
+	}
+
+	return nil
+}

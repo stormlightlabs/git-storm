@@ -1,7 +1,7 @@
 ---
 title: Testing Workflow
-updated: 2025-01-08
-version: 1
+updated: 2025-11-08
+version: 2
 ---
 
 "Ride the lightning."
@@ -256,14 +256,77 @@ storm unreleased review
 - Launches TUI with list of entries
 - Shows entry details on selection
 - Keyboard navigation works (j/k or arrows)
-- Can mark for delete/edit (not yet implemented)
-- Exit with q or ESC
+- Can mark entries with actions:
+    - Press `x` to mark for deletion
+    - Press `e` to mark for editing
+    - Press `space` to keep (undo marks)
+- Action indicators shown: [✓] keep, [✗] delete, [✎] edit
+- Footer shows action counts
+- Exit with q or ESC to cancel, Enter to confirm
+
+#### Deleting entries
+
+```bash
+storm unreleased review
+# Press 'x' on unwanted entries, then Enter to confirm
+```
+
+**Expected:**
+
+- Entries marked with [✗] are deleted from `.changes/`
+- Shows "Deleted: `<filename>`" for each removed entry
+- Final count: "Review completed: N deleted, M edited"
+- Files are permanently removed
+
+#### Editing entries
+
+```bash
+storm unreleased review
+# Press 'e' on an entry, then Enter to confirm
+```
+
+**Expected:**
+
+- Launches inline editor TUI for each marked entry
+- Editor shows:
+    - Type (cycle with Ctrl+T through: added, changed, fixed, removed, security)
+    - Scope (text input field)
+    - Summary (text input field)
+    - Breaking change status
+- Navigate fields with Tab/Shift+Tab
+- Save with Enter or Ctrl+S
+- Cancel with Esc (skips editing that entry)
+- Shows "Updated: `<filename>`" for saved changes
+- CommitHash and DiffHash preserved
+
+#### Review workflow
+
+```bash
+# Full workflow: mark multiple actions
+storm unreleased review
+# 1. Navigate with j/k
+# 2. Mark first entry with 'x' (delete)
+# 3. Mark second entry with 'e' (edit)
+# 4. Mark third entry with 'x' (delete)
+# 5. Press Enter to confirm
+```
+
+**Expected:**
+
+- All delete actions processed first
+- Then edit TUI launched for each edit action
+- Can cancel individual edits with Esc
+- Final summary shows both delete and edit counts
+- If no actions marked, shows "No changes requested"
 
 **Edge Cases:**
 
 - Empty changes directory (should show message, not crash)
 - Corrupted entry file (should handle gracefully)
 - Non-TTY environment (should detect and warn)
+- Cancel review (Esc/q) - no changes applied
+- Delete file that no longer exists (should error gracefully)
+- Edit with empty fields (fields preserve original if empty)
 
 ### CI Validation (`check`)
 

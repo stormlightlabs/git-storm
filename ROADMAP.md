@@ -24,8 +24,8 @@ The foundation CLI structure with core commands.
         - [x] Auto-detect type from conventional commit format
         - [x] Optional `--type`, `--scope`, `--summary` override flags
         - [ ] Optional `--issue` flag (TODO: see issue-linking task below)
-    - [ ] Implement delete action from review
-    - [ ] Implement edit action from review
+    - [x] Implement delete action from review
+    - [x] Implement edit action from review
 - [x] `storm check` - Validate that changes include unreleased partials
     - [x] Detect missing partials for changed code paths
     - [x] Honor `[nochanges]` and `[skip changelog]` markers in commit messages

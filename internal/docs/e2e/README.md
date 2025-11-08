@@ -1,7 +1,7 @@
 ---
 title: Integration Testing Scenarios
 updated: 2025-11-08
-version: 1
+version: 2
 ---
 
 ## Feature Branch
@@ -32,8 +32,12 @@ storm unreleased list
 # 1. Generate from last release
 storm generate --since v1.0.0
 
-# 2. Review what was generated
+# 2. Review and clean up entries
 storm unreleased review
+# Navigate with j/k
+# Press 'x' to mark duplicates/mistakes for deletion
+# Press 'e' to fix typos or categorization
+# Press Enter to apply changes
 
 # 3. Add manual entry for non-code change
 storm unreleased add --type changed --summary "Updated documentation"
@@ -49,6 +53,33 @@ git tag -n9 v1.1.0
 cat CHANGELOG.md
 
 # Expected: Clean CHANGELOG, annotated tag, empty .changes/
+```
+
+## Entry Cleanup Workflow
+
+```bash
+# 1. Create some test entries with issues
+storm unreleased add --type added --summary "Test entry 1"
+storm unreleased add --type fixed --summary "Wrong category entry"
+storm unreleased add --type added --summary "Duplicate test entry"
+storm unreleased add --type added --summary "Duplicate test entry"
+
+# 2. Review and fix
+storm unreleased review
+# - Mark duplicate for deletion with 'x'
+# - Mark wrong category entry for edit with 'e'
+# - Press Enter to confirm
+
+# 3. In editor TUI for marked entry:
+# - Press Ctrl+T to cycle type from 'fixed' to 'changed'
+# - Tab to scope field, enter "docs"
+# - Tab to summary field, update text
+# - Press Enter to save
+
+# 4. Verify changes
+storm unreleased list
+
+# Expected: Only 2 entries remain, edited entry has correct type and scope
 ```
 
 ## CI Pipeline Validation

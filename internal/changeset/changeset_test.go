@@ -14,7 +14,6 @@ import (
 
 func TestWrite(t *testing.T) {
 	tmpDir := t.TempDir()
-
 	tests := []struct {
 		name        string
 		entry       Entry
@@ -615,4 +614,161 @@ func TestWritePartial_DuplicateFilename(t *testing.T) {
 	if !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("Expected 'already exists' error, got: %v", err)
 	}
+}
+
+func TestDelete(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	entry := Entry{
+		Type:    "added",
+		Scope:   "test",
+		Summary: "Test deletion",
+	}
+
+	filePath, err := Write(tmpDir, entry)
+	if err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	filename := filepath.Base(filePath)
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		t.Fatalf("File should exist before deletion: %s", filePath)
+	}
+
+	err = Delete(tmpDir, filename)
+	if err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Errorf("File should not exist after deletion: %s", filePath)
+	}
+}
+
+func TestDelete_NonExistentFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	err := Delete(tmpDir, "nonexistent.md")
+	if err == nil {
+		t.Error("Expected error when deleting non-existent file, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("Expected 'does not exist' error, got: %v", err)
+	}
+}
+
+func TestUpdate(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	originalEntry := Entry{
+		Type:    "added",
+		Scope:   "cli",
+		Summary: "Original summary",
+	}
+
+	filePath, err := Write(tmpDir, originalEntry)
+	if err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	filename := filepath.Base(filePath)
+
+	updatedEntry := Entry{
+		Type:    "changed",
+		Scope:   "api",
+		Summary: "Updated summary",
+	}
+
+	err = Update(tmpDir, filename, updatedEntry)
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("Failed to read updated file: %v", err)
+	}
+
+	parts := strings.SplitN(string(content), "---\n", 3)
+	if len(parts) < 3 {
+		t.Fatal("Invalid YAML frontmatter format")
+	}
+
+	var parsed Entry
+	if err := yaml.Unmarshal([]byte(parts[1]), &parsed); err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+
+	testutils.Expect.Equal(t, parsed.Type, updatedEntry.Type, "Type should be updated")
+	testutils.Expect.Equal(t, parsed.Scope, updatedEntry.Scope, "Scope should be updated")
+	testutils.Expect.Equal(t, parsed.Summary, updatedEntry.Summary, "Summary should be updated")
+}
+
+func TestUpdate_NonExistentFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	entry := Entry{
+		Type:    "added",
+		Summary: "Test",
+	}
+
+	err := Update(tmpDir, "nonexistent.md", entry)
+	if err == nil {
+		t.Error("Expected error when updating non-existent file, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("Expected 'does not exist' error, got: %v", err)
+	}
+}
+
+func TestUpdate_PreserveMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	originalEntry := Entry{
+		Type:       "added",
+		Scope:      "cli",
+		Summary:    "Original",
+		Breaking:   false,
+		CommitHash: "abc123",
+		DiffHash:   "def456",
+	}
+
+	filePath, err := Write(tmpDir, originalEntry)
+	if err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	filename := filepath.Base(filePath)
+
+	updatedEntry := Entry{
+		Type:       "changed",
+		Scope:      "api",
+		Summary:    "Updated",
+		Breaking:   true,
+		CommitHash: "abc123",
+		DiffHash:   "def456",
+	}
+
+	err = Update(tmpDir, filename, updatedEntry)
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("Failed to read updated file: %v", err)
+	}
+
+	parts := strings.SplitN(string(content), "---\n", 3)
+	var parsed Entry
+	if err := yaml.Unmarshal([]byte(parts[1]), &parsed); err != nil {
+		t.Fatalf("Failed to parse YAML: %v", err)
+	}
+
+	testutils.Expect.Equal(t, parsed.CommitHash, updatedEntry.CommitHash, "CommitHash should be preserved")
+	testutils.Expect.Equal(t, parsed.DiffHash, updatedEntry.DiffHash, "DiffHash should be preserved")
+	testutils.Expect.Equal(t, parsed.Breaking, updatedEntry.Breaking, "Breaking should be updated")
 }

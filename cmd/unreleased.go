@@ -182,11 +182,43 @@ unreleased entries before final release.`,
 			editCount := 0
 
 			for _, item := range items {
-				switch item.Action {
-				case ui.ActionDelete:
+				if item.Action == ui.ActionDelete {
+					if err := changeset.Delete(changesDir, item.Entry.Filename); err != nil {
+						return fmt.Errorf("failed to delete %s: %w", item.Entry.Filename, err)
+					}
 					deleteCount++
-				case ui.ActionEdit:
-					editCount++
+					style.Successf("Deleted: %s", item.Entry.Filename)
+				}
+			}
+
+			for _, item := range items {
+				if item.Action == ui.ActionEdit {
+					editorModel := ui.NewEntryEditorModel(item.Entry)
+					p := tea.NewProgram(editorModel, tea.WithAltScreen())
+
+					finalModel, err := p.Run()
+					if err != nil {
+						return fmt.Errorf("failed to run editor TUI: %w", err)
+					}
+
+					editor, ok := finalModel.(ui.EntryEditorModel)
+					if !ok {
+						return fmt.Errorf("unexpected model type")
+					}
+
+					if editor.IsCancelled() {
+						style.Warningf("Skipped editing: %s", item.Entry.Filename)
+						continue
+					}
+
+					if editor.IsConfirmed() {
+						editedEntry := editor.GetEditedEntry()
+						if err := changeset.Update(changesDir, item.Entry.Filename, editedEntry); err != nil {
+							return fmt.Errorf("failed to update %s: %w", item.Entry.Filename, err)
+						}
+						editCount++
+						style.Successf("Updated: %s", item.Entry.Filename)
+					}
 				}
 			}
 
@@ -195,8 +227,7 @@ unreleased entries before final release.`,
 				return nil
 			}
 
-			style.Headlinef("Review completed: %d to delete, %d to edit", deleteCount, editCount)
-			style.Println("Note: Delete and edit actions are not yet implemented")
+			style.Headlinef("Review completed: %d deleted, %d edited", deleteCount, editCount)
 			return nil
 		},
 	}
