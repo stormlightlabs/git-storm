@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -226,4 +227,76 @@ func TestResolveReleaseVersion(t *testing.T) {
 	if version != "0.0.1" {
 		t.Fatalf("expected 0.0.1 for empty changelog, got %s", version)
 	}
+}
+
+func TestReleaseOutput_JSONStructure(t *testing.T) {
+	output := ReleaseOutput{
+		Version:        "1.0.0",
+		Date:           "2024-01-15",
+		EntriesCount:   3,
+		ChangelogPath:  "CHANGELOG.md",
+		TagCreated:     true,
+		TagName:        "v1.0.0",
+		ChangesCleared: true,
+		DeletedCount:   3,
+		DryRun:         false,
+		VersionData: &changelog.Version{
+			Number: "1.0.0",
+			Date:   "2024-01-15",
+			Sections: []changelog.Section{
+				{
+					Type:    "added",
+					Entries: []string{"Feature 1"},
+				},
+			},
+		},
+	}
+
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal JSON: %v", err)
+	}
+
+	var unmarshaled ReleaseOutput
+	err = json.Unmarshal(jsonBytes, &unmarshaled)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
+	}
+
+	testutils.Expect.Equal(t, unmarshaled.Version, "1.0.0")
+	testutils.Expect.Equal(t, unmarshaled.Date, "2024-01-15")
+	testutils.Expect.Equal(t, unmarshaled.EntriesCount, 3)
+	testutils.Expect.Equal(t, unmarshaled.TagCreated, true)
+	testutils.Expect.Equal(t, unmarshaled.TagName, "v1.0.0")
+	testutils.Expect.Equal(t, unmarshaled.ChangesCleared, true)
+	testutils.Expect.Equal(t, unmarshaled.DeletedCount, 3)
+}
+
+func TestReleaseOutput_DryRunJSON(t *testing.T) {
+	output := ReleaseOutput{
+		Version:       "1.0.0",
+		Date:          "2024-01-15",
+		EntriesCount:  2,
+		ChangelogPath: "CHANGELOG.md",
+		DryRun:        true,
+		VersionData: &changelog.Version{
+			Number: "1.0.0",
+			Date:   "2024-01-15",
+			Sections: []changelog.Section{
+				{
+					Type:    "fixed",
+					Entries: []string{"Bug fix"},
+				},
+			},
+		},
+	}
+
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal JSON: %v", err)
+	}
+
+	testutils.Expect.True(t, strings.Contains(string(jsonBytes), `"dry_run": true`))
+	testutils.Expect.True(t, strings.Contains(string(jsonBytes), `"tag_created": false`))
+	testutils.Expect.True(t, strings.Contains(string(jsonBytes), `"changes_cleared": false`))
 }

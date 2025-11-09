@@ -8,11 +8,13 @@ FLAGS
 	-i, --interactive       Review generated entries in a TUI
 	    --since <tag>       Generate changes since the given tag
 	-o, --output <path>     Write generated changelog to path
+	    --output-json       Output results as JSON
 	    --repo <path>       Path to the Git repository (default: .)
 */
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -29,7 +31,25 @@ import (
 var (
 	interactive bool
 	sinceTag    string
+	outputJSON  bool
 )
+
+// GenerateOutput represents the JSON output structure for the generate command.
+type GenerateOutput struct {
+	From         string                    `json:"from"`
+	To           string                    `json:"to"`
+	TotalCommits int                       `json:"total_commits"`
+	Statistics   GenerateStatistics        `json:"statistics"`
+	Entries      []changeset.EntryWithFile `json:"entries,omitempty"`
+}
+
+// GenerateStatistics holds counts of generated, skipped, duplicate, and rebased entries.
+type GenerateStatistics struct {
+	Created    int `json:"created"`
+	Skipped    int `json:"skipped"`
+	Duplicates int `json:"duplicates"`
+	Rebased    int `json:"rebased"`
+}
 
 // TODO(determinism): Add deduplication logic using diff-based identity
 //
@@ -77,6 +97,10 @@ interactive review mode.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if interactive && !tty.IsInteractive() {
 				return tty.ErrorInteractiveFlag("--interactive")
+			}
+
+			if interactive && outputJSON {
+				return fmt.Errorf("--interactive and --output-json cannot be used together")
 			}
 
 			var from, to string
@@ -233,6 +257,33 @@ interactive review mode.`,
 				created++
 			}
 
+			if outputJSON {
+				entries, err := changeset.List(changesDir)
+				if err != nil {
+					return fmt.Errorf("failed to list generated entries: %w", err)
+				}
+
+				output := GenerateOutput{
+					From:         from,
+					To:           to,
+					TotalCommits: len(commits),
+					Statistics: GenerateStatistics{
+						Created:    created,
+						Skipped:    skipped,
+						Duplicates: duplicates,
+						Rebased:    rebased,
+					},
+					Entries: entries,
+				}
+
+				jsonBytes, err := json.MarshalIndent(output, "", "  ")
+				if err != nil {
+					return fmt.Errorf("failed to marshal output to JSON: %w", err)
+				}
+				fmt.Println(string(jsonBytes))
+				return nil
+			}
+
 			style.Newline()
 			style.Headlinef("Generated %d new changelog entries", created)
 			if duplicates > 0 {
@@ -251,5 +302,6 @@ interactive review mode.`,
 
 	c.Flags().BoolVarP(&interactive, "interactive", "i", false, "Review changes interactively in a TUI")
 	c.Flags().StringVar(&sinceTag, "since", "", "Generate changes since the given tag")
+	c.Flags().BoolVar(&outputJSON, "output-json", false, "Output results as JSON")
 	return c
 }

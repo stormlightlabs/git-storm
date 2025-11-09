@@ -12,12 +12,14 @@ FLAGS
 	--dry-run             Preview changes without writing files
 	--tag                 Create an annotated Git tag with release notes
 	--toolchain <value>   Update toolchain manifests (path/type or 'interactive')
+	--output-json         Output results as JSON
 	--repo <path>         Path to the Git repository (default: .)
 	--output <path>       Output changelog file path (default: CHANGELOG.md)
 */
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,6 +36,21 @@ import (
 	"github.com/stormlightlabs/git-storm/internal/versioning"
 )
 
+// ReleaseOutput represents the JSON output structure for the release command.
+type ReleaseOutput struct {
+	Version           string             `json:"version"`
+	Date              string             `json:"date"`
+	EntriesCount      int                `json:"entries_count"`
+	ChangelogPath     string             `json:"changelog_path"`
+	TagCreated        bool               `json:"tag_created"`
+	TagName           string             `json:"tag_name,omitempty"`
+	ChangesCleared    bool               `json:"changes_cleared"`
+	DeletedCount      int                `json:"deleted_count,omitempty"`
+	ToolchainsUpdated []string           `json:"toolchains_updated,omitempty"`
+	DryRun            bool               `json:"dry_run"`
+	VersionData       *changelog.Version `json:"version_data"`
+}
+
 func releaseCmd() *cobra.Command {
 	var (
 		version      string
@@ -43,6 +60,7 @@ func releaseCmd() *cobra.Command {
 		dryRun       bool
 		tag          bool
 		toolchains   []string
+		outputJSON   bool
 	)
 
 	c := &cobra.Command{
@@ -72,8 +90,10 @@ Optionally creates a Git tag and clears the .changes directory.`,
 				}
 			}
 
-			style.Headlinef("Preparing release %s (%s)", version, releaseDate)
-			style.Newline()
+			if !outputJSON {
+				style.Headlinef("Preparing release %s (%s)", version, releaseDate)
+				style.Newline()
+			}
 
 			changesDir := ".changes"
 			entries, err := changeset.List(changesDir)
@@ -85,8 +105,10 @@ Optionally creates a Git tag and clears the .changes directory.`,
 				return fmt.Errorf("no unreleased changes found in %s", changesDir)
 			}
 
-			style.Println("Found %d unreleased entries", len(entries))
-			style.Newline()
+			if !outputJSON {
+				style.Println("Found %d unreleased entries", len(entries))
+				style.Newline()
+			}
 
 			var entryList []changeset.Entry
 			for _, e := range entries {
@@ -100,7 +122,25 @@ Optionally creates a Git tag and clears the .changes directory.`,
 
 			changelog.Merge(existingChangelog, newVersion)
 
+			releaseOutput := ReleaseOutput{
+				Version:       version,
+				Date:          releaseDate,
+				EntriesCount:  len(entries),
+				ChangelogPath: changelogPath,
+				DryRun:        dryRun,
+				VersionData:   newVersion,
+			}
+
 			if dryRun {
+				if outputJSON {
+					jsonBytes, err := json.MarshalIndent(releaseOutput, "", "  ")
+					if err != nil {
+						return fmt.Errorf("failed to marshal output to JSON: %w", err)
+					}
+					fmt.Println(string(jsonBytes))
+					return nil
+				}
+
 				style.Headline("Dry-run mode: Preview of CHANGELOG.md")
 				style.Newline()
 				displayVersionPreview(newVersion)
@@ -116,19 +156,27 @@ Optionally creates a Git tag and clears the .changes directory.`,
 				return fmt.Errorf("failed to write CHANGELOG.md: %w", err)
 			}
 
-			style.Addedf("✓ Updated %s", changelogPath)
+			if !outputJSON {
+				style.Addedf("✓ Updated %s", changelogPath)
+			}
 
 			if clearChanges {
 				deletedCount := 0
 				for _, entry := range entries {
 					filePath := filepath.Join(changesDir, entry.Filename)
 					if err := os.Remove(filePath); err != nil {
-						style.Println("Warning: failed to delete %s: %v", filePath, err)
+						if !outputJSON {
+							style.Println("Warning: failed to delete %s: %v", filePath, err)
+						}
 						continue
 					}
 					deletedCount++
 				}
-				style.Println("✓ Deleted %d entry files from %s", deletedCount, changesDir)
+				releaseOutput.ChangesCleared = true
+				releaseOutput.DeletedCount = deletedCount
+				if !outputJSON {
+					style.Println("✓ Deleted %d entry files from %s", deletedCount, changesDir)
+				}
 			}
 
 			if len(toolchains) > 0 {
@@ -136,22 +184,40 @@ Optionally creates a Git tag and clears the .changes directory.`,
 				if err != nil {
 					return err
 				}
+				var updatedPaths []string
 				for _, manifest := range updated {
-					style.Addedf("✓ Updated %s", manifest.RelPath)
+					updatedPaths = append(updatedPaths, manifest.RelPath)
+					if !outputJSON {
+						style.Addedf("✓ Updated %s", manifest.RelPath)
+					}
 				}
+				releaseOutput.ToolchainsUpdated = updatedPaths
 			}
 
-			style.Newline()
-			style.Headlinef("Release %s completed successfully", version)
-
 			if tag {
-				style.Newline()
 				if err := createReleaseTag(repoPath, version, newVersion); err != nil {
 					return fmt.Errorf("failed to create Git tag: %w", err)
 				}
 				tagName := fmt.Sprintf("v%s", version)
-				style.Addedf("✓ Created Git tag %s", tagName)
+				releaseOutput.TagCreated = true
+				releaseOutput.TagName = tagName
+				if !outputJSON {
+					style.Newline()
+					style.Addedf("✓ Created Git tag %s", tagName)
+				}
 			}
+
+			if outputJSON {
+				jsonBytes, err := json.MarshalIndent(releaseOutput, "", "  ")
+				if err != nil {
+					return fmt.Errorf("failed to marshal output to JSON: %w", err)
+				}
+				fmt.Println(string(jsonBytes))
+				return nil
+			}
+
+			style.Newline()
+			style.Headlinef("Release %s completed successfully", version)
 
 			return nil
 		},
@@ -164,6 +230,7 @@ Optionally creates a Git tag and clears the .changes directory.`,
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without writing files")
 	c.Flags().BoolVar(&tag, "tag", false, "Create an annotated Git tag with release notes")
 	c.Flags().StringSliceVar(&toolchains, "toolchain", nil, "Toolchain manifests to update (paths, types, or 'interactive')")
+	c.Flags().BoolVar(&outputJSON, "output-json", false, "Output results as JSON")
 
 	return c
 }

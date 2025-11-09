@@ -38,10 +38,11 @@ storm bump --bump <major|minor|patch> [--toolchain value...]
 
 ##### Flags
 
-| Flag                         | Description                                                                                                                                                                                            |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--bump <type>` _(required)_ | Which semver component to increment.                                                                                                                                                                   |
-| `--toolchain <value>`        | Update language manifests (`Cargo.toml`, `pyproject.toml`, `package.json`, `deno.json`). Accepts explicit paths, type aliases like `cargo`/`npm`, or the literal `interactive` to launch a picker TUI. |
+| Flag                         | Description                                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `--bump <type>` _(required)_ | Which semver component to increment.                                                                          |
+| `--toolchain <value>`        | Update language manifests (`Cargo.toml`, `pyproject.toml`, `package.json`, `deno.json`).                      |
+|                              | Accepts explicit paths, type aliases like `cargo`/`npm`, or the literal `interactive` to launch a picker TUI. |
 
 #### `storm release`
 
@@ -62,6 +63,7 @@ storm release (--version X.Y.Z | --bump <type>) [flags]
 | `--dry-run`           | Render a preview without touching any files.                                        |
 | `--tag`               | Create an annotated git tag containing the release notes.                           |
 | `--toolchain <value>` | Update manifest files just like in `storm bump`.                                    |
+| `--output-json`       | Emit machine-readable JSON instead of styled text.                                  |
 
 #### `storm generate`
 
@@ -74,10 +76,11 @@ storm generate --since <tag> [to]
 
 ##### Flags
 
-| Flag                  | Description                                       |
-| --------------------- | ------------------------------------------------- |
-| `-i`, `--interactive` | Open a commit selector TUI for choosing entries.  |
-| `--since <tag>`       | Shortcut for `<from>`; defaults `<to>` to `HEAD`. |
+| Flag                  | Description                                        |
+| --------------------- | -------------------------------------------------- |
+| `-i`, `--interactive` | Open a commit selector TUI for choosing entries.   |
+| `--since <tag>`       | Shortcut for `<from>`; defaults `<to>` to `HEAD`.  |
+| `--output-json`       | Emit machine-readable JSON instead of styled text. |
 
 #### `storm diff`
 

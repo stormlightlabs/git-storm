@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stormlightlabs/git-storm/internal/gitlog"
@@ -57,5 +59,85 @@ func TestGetCommitRange_InvalidRef(t *testing.T) {
 	_, err := gitlog.GetCommitRange(repo, "invalid-ref", "HEAD")
 	if err == nil {
 		t.Errorf("Expected error for invalid ref, got nil")
+	}
+}
+
+func TestGenerateCmd_JSONOutput(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	commits := testutils.GetCommitHistory(t, repo)
+	if len(commits) < 2 {
+		t.Fatalf("Expected at least 2 commits, got %d", len(commits))
+	}
+
+	oldCommit := commits[len(commits)-2]
+	if err := testutils.CreateTagAtCommit(t, repo, "v1.0.0", oldCommit.Hash.String()); err != nil {
+		t.Fatalf("Failed to create tag: %v", err)
+	}
+
+	testutils.AddCommit(t, repo, "feat.txt", "content", "feat: add new feature")
+	testutils.AddCommit(t, repo, "fix.txt", "content", "fix: fix bug")
+
+	repoPath = worktree.Filesystem.Root()
+	outputJSON = true
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current directory: %v", err)
+	}
+	defer func() {
+		os.Chdir(oldWd)
+		outputJSON = false
+	}()
+
+	if err := os.Chdir(repoPath); err != nil {
+		t.Fatalf("Failed to change to temp directory: %v", err)
+	}
+
+	cmd := generateCmd()
+	cmd.SetArgs([]string{"v1.0.0", "HEAD"})
+
+	err = cmd.Execute()
+	if err != nil {
+		t.Fatalf("generateCmd() error = %v", err)
+	}
+}
+
+func TestGenerateCmd_InteractiveAndJSONConflict(t *testing.T) {
+	repo := testutils.SetupTestRepo(t)
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	repoPath = worktree.Filesystem.Root()
+
+	cmd := generateCmd()
+	cmd.SetArgs([]string{"--interactive", "--output-json", "HEAD~1", "HEAD"})
+
+	err = cmd.Execute()
+	if err == nil {
+		t.Error("Expected error when using --interactive and --output-json together, got nil")
+	}
+
+	if err != nil {
+		validErrors := []string{
+			"--interactive and --output-json cannot be used together",
+			"requires an interactive terminal",
+		}
+		foundValidError := false
+		for _, validErr := range validErrors {
+			if strings.Contains(err.Error(), validErr) {
+				foundValidError = true
+				break
+			}
+		}
+		if !foundValidError {
+			t.Errorf("Expected error about flags conflict or TTY requirement, got: %v", err)
+		}
 	}
 }

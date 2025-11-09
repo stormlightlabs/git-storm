@@ -100,10 +100,10 @@ Repository tagging and automation-friendly features.
     - [x] Validate changelog entries exist for commits
     - [x] Honor `[nochanges]` markers
     - [x] Exit codes for CI integration
-- [ ] Add JSON output modes for all commands
+- [x] Add JSON output modes for all commands
     - [x] `unreleased list --json`
-    - [ ] `generate --output-json`
-    - [ ] `release --output-json`
+    - [x] `generate --output-json`
+    - [x] `release --output-json`
 - [x] Add `--dry-run` support
     - [x] `release --dry-run`
     - [x] Show what would be written without writing
