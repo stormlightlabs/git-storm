@@ -11,24 +11,23 @@ builds:
   - id: storm
     main: ./cmd
     binary: storm
-    env:
-      - CGO_ENABLED=0
+    env: [CGO_ENABLED=0]
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64, "386"]
 
 archives:
   - id: default
     formats: [tar.gz]
-    name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         formats: [zip]
-    # 👇 this is the important part
     files:
-      - completions/**
-      - manpages/**
-    # the `**` ensures recursive inclusion from project root
+      # modern syntax: each item can have src/dst pairs
+      - src: completions/**
+        dst: completions
+      - src: manpages/**
+        dst: manpages
 
 changelog:
   sort: asc
