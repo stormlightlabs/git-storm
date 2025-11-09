@@ -6,10 +6,12 @@ USAGE
 FLAGS
 
 	--version <X.Y.Z>     Semantic version for the new release (required)
+	--bump <type>         Automatically bump the previous version (major|minor|patch)
 	--date <YYYY-MM-DD>   Release date (default: today)
 	--clear-changes       Delete .changes/*.md files after successful release
 	--dry-run             Preview changes without writing files
 	--tag                 Create an annotated Git tag with release notes
+	--toolchain <value>   Update toolchain manifests (path/type or 'interactive')
 	--repo <path>         Path to the Git repository (default: .)
 	--output <path>       Output changelog file path (default: CHANGELOG.md)
 */
@@ -29,15 +31,18 @@ import (
 	"github.com/stormlightlabs/git-storm/internal/changeset"
 	"github.com/stormlightlabs/git-storm/internal/shared"
 	"github.com/stormlightlabs/git-storm/internal/style"
+	"github.com/stormlightlabs/git-storm/internal/versioning"
 )
 
 func releaseCmd() *cobra.Command {
 	var (
 		version      string
+		bumpKind     string
 		date         string
 		clearChanges bool
 		dryRun       bool
 		tag          bool
+		toolchains   []string
 	)
 
 	c := &cobra.Command{
@@ -46,9 +51,17 @@ func releaseCmd() *cobra.Command {
 		Long: `Merges all .changes entries into CHANGELOG.md under a new version header.
 Optionally creates a Git tag and clears the .changes directory.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := changelog.ValidateVersion(version); err != nil {
+			changelogPath := filepath.Join(repoPath, output)
+			existingChangelog, err := changelog.Parse(changelogPath)
+			if err != nil {
+				return fmt.Errorf("failed to parse changelog: %w", err)
+			}
+
+			resolvedVersion, err := resolveReleaseVersion(version, bumpKind, existingChangelog)
+			if err != nil {
 				return err
 			}
+			version = resolvedVersion
 
 			releaseDate := date
 			if releaseDate == "" {
@@ -85,12 +98,6 @@ Optionally creates a Git tag and clears the .changes directory.`,
 				return fmt.Errorf("failed to build version: %w", err)
 			}
 
-			changelogPath := filepath.Join(repoPath, output)
-			existingChangelog, err := changelog.Parse(changelogPath)
-			if err != nil {
-				return fmt.Errorf("failed to parse existing changelog: %w", err)
-			}
-
 			changelog.Merge(existingChangelog, newVersion)
 
 			if dryRun {
@@ -99,6 +106,9 @@ Optionally creates a Git tag and clears the .changes directory.`,
 				displayVersionPreview(newVersion)
 				style.Newline()
 				style.Println("No files were modified (--dry-run)")
+				if len(toolchains) > 0 {
+					style.Warningf("Skipping toolchain updates (--dry-run)")
+				}
 				return nil
 			}
 
@@ -121,6 +131,16 @@ Optionally creates a Git tag and clears the .changes directory.`,
 				style.Println("✓ Deleted %d entry files from %s", deletedCount, changesDir)
 			}
 
+			if len(toolchains) > 0 {
+				updated, err := updateToolchainTargets(repoPath, version, toolchains)
+				if err != nil {
+					return err
+				}
+				for _, manifest := range updated {
+					style.Addedf("✓ Updated %s", manifest.RelPath)
+				}
+			}
+
 			style.Newline()
 			style.Headlinef("Release %s completed successfully", version)
 
@@ -138,13 +158,42 @@ Optionally creates a Git tag and clears the .changes directory.`,
 	}
 
 	c.Flags().StringVar(&version, "version", "", "Semantic version for the new release (e.g., 1.3.0)")
+	c.Flags().StringVar(&bumpKind, "bump", "", "Automatically bump the previous version (major, minor, or patch)")
 	c.Flags().StringVar(&date, "date", "", "Release date in YYYY-MM-DD format (default: today)")
 	c.Flags().BoolVar(&clearChanges, "clear-changes", false, "Delete .changes/*.md files after successful release")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without writing files")
 	c.Flags().BoolVar(&tag, "tag", false, "Create an annotated Git tag with release notes")
-	c.MarkFlagRequired("version")
+	c.Flags().StringSliceVar(&toolchains, "toolchain", nil, "Toolchain manifests to update (paths, types, or 'interactive')")
 
 	return c
+}
+
+func resolveReleaseVersion(versionFlag, bumpFlag string, existing *changelog.Changelog) (string, error) {
+	if bumpFlag == "" {
+		if versionFlag == "" {
+			return "", fmt.Errorf("either --version or --bump must be provided")
+		}
+		if err := changelog.ValidateVersion(versionFlag); err != nil {
+			return "", err
+		}
+		return versionFlag, nil
+	}
+
+	if versionFlag != "" {
+		return "", fmt.Errorf("--version and --bump cannot be used together")
+	}
+
+	kind, err := versioning.ParseBumpType(bumpFlag)
+	if err != nil {
+		return "", err
+	}
+
+	var current string
+	if v, ok := versioning.LatestVersion(existing); ok {
+		current = v
+	}
+
+	return versioning.Next(current, kind)
 }
 
 // createReleaseTag creates an annotated Git tag for the release with changelog entries as the message.

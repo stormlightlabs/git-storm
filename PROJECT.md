@@ -94,10 +94,14 @@ Example pseudo-pipeline (GitHub Actions / Drone / Woodpecker):
 
 ```yaml
 steps:
+  - name: Compute next version
+    run: |
+      NEXT=$(storm bump --bump patch)
+      echo "::set-output name=version::$NEXT"
   - name: Generate changelog
     run: |
       go install ./cmd/storm
-      storm release --version ${{ steps.bump.outputs.version }}
+      storm release --version ${{ steps.bump.outputs.version }} --toolchain package.json
   - name: Tag and push
     run: |
       git add CHANGELOG.md

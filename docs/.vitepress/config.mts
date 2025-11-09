@@ -2,8 +2,8 @@ import { defineConfig } from "vitepress";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-    title: "Git Storm",
-    description: "A changelog manager",
+    title: "Storm",
+    description: "Local-first changelog manager for git repositories",
     markdown: {
         theme: {
             light: "catppuccin-latte",
@@ -13,22 +13,36 @@ export default defineConfig({
     themeConfig: {
         // https://vitepress.dev/reference/default-theme-config
         nav: [
-            { text: "Home", link: "/" },
-            { text: "Examples", link: "/markdown-examples" },
+            { text: "Introduction", link: "/introduction" },
+            { text: "Quickstart", link: "/quickstart" },
+            { text: "Manual", link: "/manual" },
+            { text: "Development", link: "/development" },
         ],
-
         sidebar: [
             {
-                text: "Examples",
+                text: "Getting Started",
                 items: [
-                    { text: "Markdown Examples", link: "/markdown-examples" },
-                    { text: "Runtime API Examples", link: "/api-examples" },
+                    { text: "Introduction", link: "/introduction" },
+                    { text: "Quickstart", link: "/quickstart" },
+                ],
+            },
+            {
+                text: "Reference",
+                items: [
+                    { text: "Manual", link: "/manual" },
+                    { text: "Development", link: "/development" },
                 ],
             },
         ],
-
         socialLinks: [
-            { icon: "github", link: "https://github.com/vuejs/vitepress" },
+            {
+                icon: "github",
+                link: "https://github.com/stormlightlabs/git-storm",
+            },
+            {
+                icon: "bluesky",
+                link: "http://bsky.app/profile/desertthunder.dev/",
+            },
         ],
     },
 });

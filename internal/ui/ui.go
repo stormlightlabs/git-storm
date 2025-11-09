@@ -171,10 +171,7 @@ func (m DiffModel) View() string {
 
 // renderHeader creates the header bar showing file paths.
 func (m DiffModel) renderHeader() string {
-	headerStyle := lipgloss.NewStyle().
-		Foreground(style.AccentBlue).
-		Bold(true).
-		Padding(0, 1)
+	headerStyle := lipgloss.NewStyle().Foreground(style.AccentBlue).Bold(true).Padding(0, 1)
 
 	oldLabel := lipgloss.NewStyle().Foreground(style.RemovedColor).Render("−")
 	newLabel := lipgloss.NewStyle().Foreground(style.AddedColor).Render("+")
@@ -199,11 +196,7 @@ func (m DiffModel) renderFooter() string {
 	totalWidth := m.viewport.Width
 	helpWidth := lipgloss.Width(helpText)
 	scrollWidth := lipgloss.Width(scrollInfo)
-	padding := totalWidth - helpWidth - scrollWidth - 2
-
-	if padding < 0 {
-		padding = 0
-	}
+	padding := max(totalWidth-helpWidth-scrollWidth-2, 0)
 
 	return footerStyle.Render(
 		helpText + strings.Repeat(" ", padding) + scrollInfo,
@@ -422,11 +415,7 @@ func (m MultiFileDiffModel) renderMultiFileFooter() string {
 	totalWidth := m.width
 	helpWidth := lipgloss.Width(helpText)
 	scrollWidth := lipgloss.Width(scrollInfo)
-	padding := totalWidth - helpWidth - scrollWidth - 2
-
-	if padding < 0 {
-		padding = 0
-	}
+	padding := max(totalWidth-helpWidth-scrollWidth-2, 0)
 
 	return footerStyle.Render(
 		helpText + strings.Repeat(" ", padding) + scrollInfo,

@@ -194,3 +194,36 @@ func TestBuildTagMessage_EmptyVersion(t *testing.T) {
 
 	testutils.Expect.True(t, strings.HasPrefix(message, "Release 1.0.0\n\n"), "Should still have release header even with no sections")
 }
+
+func TestResolveReleaseVersion(t *testing.T) {
+	existing := &changelog.Changelog{Versions: []changelog.Version{{Number: "Unreleased"}, {Number: "1.2.3"}}}
+
+	version, err := resolveReleaseVersion("", "minor", existing)
+	if err != nil {
+		t.Fatalf("resolveReleaseVersion returned error: %v", err)
+	}
+	if version != "1.3.0" {
+		t.Fatalf("expected 1.3.0, got %s", version)
+	}
+
+	version, err = resolveReleaseVersion("2.0.0", "", existing)
+	if err != nil {
+		t.Fatalf("resolveReleaseVersion returned error: %v", err)
+	}
+	if version != "2.0.0" {
+		t.Fatalf("expected 2.0.0, got %s", version)
+	}
+
+	if _, err := resolveReleaseVersion("2.0.0", "patch", existing); err == nil {
+		t.Fatal("expected error when both --version and --bump are set")
+	}
+
+	blankChangelog := &changelog.Changelog{}
+	version, err = resolveReleaseVersion("", "patch", blankChangelog)
+	if err != nil {
+		t.Fatalf("resolveReleaseVersion returned error: %v", err)
+	}
+	if version != "0.0.1" {
+		t.Fatalf("expected 0.0.1 for empty changelog, got %s", version)
+	}
+}

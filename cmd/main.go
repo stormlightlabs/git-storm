@@ -41,9 +41,9 @@ and can review commits interactively through a TUI.`,
 
 	root.PersistentFlags().StringVar(&repoPath, "repo", ".", "Path to the Git repository")
 	root.PersistentFlags().StringVarP(&output, "output", "o", "CHANGELOG.md", "Output changelog file path")
-	root.AddCommand(generateCmd(), unreleasedCmd(), releaseCmd(), diffCmd(), checkCmd(), versionCmd())
+	root.AddCommand(generateCmd(), unreleasedCmd(), releaseCmd(), bumpCmd(), diffCmd(), checkCmd(), versionCmd())
 
-	if err := fang.Execute(ctx, root, fang.WithColorSchemeFunc(style.NewColorScheme)); err != nil {
+	if err := fang.Execute(ctx, root, fang.WithColorSchemeFunc(style.NewColorScheme), fang.WithoutCompletions()); err != nil {
 		log.Fatalf("Execution failed: %v", err)
 	}
 }

@@ -35,3 +35,5 @@ go.work.sum
 tmp/
 node_modules/
 **/.vitepress/cache/
+# Added by goreleaser init:
+dist/
