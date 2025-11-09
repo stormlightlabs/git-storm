@@ -1,0 +1,156 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+    - task gen:completions
+    - task gen:manpage
+
+builds:
+  - id: storm-linux-amd64
+    main: ./cmd
+    binary: storm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+  - id: storm-linux-arm64
+    main: ./cmd
+    binary: storm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+
+  - id: storm-linux-386
+    main: ./cmd
+    binary: storm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - "386"
+
+  - id: storm-windows-amd64
+    main: ./cmd
+    binary: storm.exe
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+
+  - id: storm-windows-arm64
+    main: ./cmd
+    binary: storm.exe
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - arm64
+
+  - id: storm-windows-386
+    main: ./cmd
+    binary: storm.exe
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - "386"
+
+  - id: storm-darwin-amd64
+    main: ./cmd
+    binary: storm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+
+  - id: storm-darwin-arm64
+    main: ./cmd
+    binary: storm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+
+archives:
+  - id: default
+    builds:
+      - storm-linux-amd64
+      - storm-linux-arm64
+      - storm-linux-386
+      - storm-windows-amd64
+      - storm-windows-arm64
+      - storm-windows-386
+      - storm-darwin-amd64
+      - storm-darwin-arm64
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+  - id: extras
+    builds:
+      - storm-linux-amd64   # pick one build id; meta means no OS/Arch conflict
+    meta: true
+    files:
+      - "completions/*"
+      - "manpages/*"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  footer: |
+    ---
+    Made by [Owais](https://github.com/desertthunder/desertthunder).
+
+homebrew_casks:
+  - name: storm
+    repository:
+      owner: stormlightlabs
+      name: homebrew-tap
+      branch: main
+    homepage: "https://github.com/stormlightlabs/git-storm"
+    description: "A changelog manager with TUIs for review and release"
+    license: MIT
+    url:
+      template: "https://github.com/stormlightlabs/git-storm/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+      verified: "github.com/stormlightlabs/git-storm/"
+    binaries:
+      - storm
+    manpages:
+      - manpages/storm.1
+    completions:
+      bash: completions/storm.bash
+      zsh:  completions/storm.zsh
+      fish: completions/storm.fish
+    directory: Casks
+    commit_msg_template: "Brew cask update for Storm version {{ .Tag }}"
+    skip_upload: false
+    ids:
+      - default
+      - extras

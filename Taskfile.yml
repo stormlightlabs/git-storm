@@ -93,3 +93,30 @@ tasks:
       - task: tidy
       - task: build
       - echo "Setup complete."
+
+  gen:completions:
+    desc: Generate shell completion files
+    cmds:
+      - |
+        rm -rf completions
+        mkdir -p completions
+        for sh in bash zsh fish; do
+          go run ./cmd completion "$sh" > completions/storm."$sh"
+        done
+    sources:
+      - "**/*.go"
+    generates:
+      - "completions/{{.BINARY_NAME}}.bash"
+      - "completions/{{.BINARY_NAME}}.zsh"
+      - "completions/{{.BINARY_NAME}}.fish"
+
+  gen:manpage:
+    desc: Generate man page file
+    cmds:
+      - rm -rf manpages
+      - mkdir -p manpages
+      - go run ./cmd man > manpages/{{.BINARY_NAME}}.1
+    sources:
+      - "**/*.go"
+    generates:
+      - "manpages/{{.BINARY_NAME}}.1"
