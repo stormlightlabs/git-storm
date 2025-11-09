@@ -8,115 +8,27 @@ before:
     - task gen:manpage
 
 builds:
-  - id: storm-linux-amd64
+  - id: storm
     main: ./cmd
     binary: storm
     env:
       - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - amd64
-
-  - id: storm-linux-arm64
-    main: ./cmd
-    binary: storm
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - arm64
-
-  - id: storm-linux-386
-    main: ./cmd
-    binary: storm
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - "386"
-
-  - id: storm-windows-amd64
-    main: ./cmd
-    binary: storm.exe
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - windows
-    goarch:
-      - amd64
-
-  - id: storm-windows-arm64
-    main: ./cmd
-    binary: storm.exe
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - windows
-    goarch:
-      - arm64
-
-  - id: storm-windows-386
-    main: ./cmd
-    binary: storm.exe
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - windows
-    goarch:
-      - "386"
-
-  - id: storm-darwin-amd64
-    main: ./cmd
-    binary: storm
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - darwin
-    goarch:
-      - amd64
-
-  - id: storm-darwin-arm64
-    main: ./cmd
-    binary: storm
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - darwin
-    goarch:
-      - arm64
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64, "386"]
 
 archives:
   - id: default
-    ids:
-      - storm-linux-amd64
-      - storm-linux-arm64
-      - storm-linux-386
-      - storm-windows-amd64
-      - storm-windows-arm64
-      - storm-windows-386
-      - storm-darwin-amd64
-      - storm-darwin-arm64
-    formats:
-      - tar.gz
+    formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     format_overrides:
       - goos: windows
-        formats:
-          - zip
-
-  - id: extras
-    meta: true
-    ids:
-      - storm-linux-amd64
-    name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_extras
+        formats: [zip]
+    # 👇 this is the important part
     files:
-      - "dist/completions/*"
-      - "dist/manpages/*"
+      - completions/**
+      - manpages/**
+    # the `**` ensures recursive inclusion from project root
 
 changelog:
   sort: asc
@@ -150,9 +62,8 @@ homebrew_casks:
       bash: completions/storm.bash
       zsh: completions/storm.zsh
       fish: completions/storm.fish
-    directory: casks
+    directory: Casks
     commit_msg_template: "Brew cask update for Storm version {{ .Tag }}"
     skip_upload: false
     ids:
       - default
-      - extras
