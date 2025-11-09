@@ -1,0 +1,29 @@
+{
+    "name": "git-storm",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "dev": "vitepress dev docs",
+        "build": "vitepress build docs",
+        "preview": "vitepress preview docs"
+    },
+    "keywords": [
+        "git",
+        "changelog",
+        "changeset"
+    ],
+    "author": {
+        "name": "Owais J.",
+        "url": "https://stormlightlabs.org"
+    },
+    "license": "MIT",
+    "packageManager": "pnpm@10.20.0",
+    "devDependencies": {
+        "vitepress": "2.0.0-alpha.12",
+        "vue": "^3.5.24"
+    },
+    "dependencies": {
+        "@catppuccin/vitepress": "^0.1.2"
+    }
+}
