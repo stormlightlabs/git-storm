@@ -11,11 +11,20 @@
 
 ## Install
 
+### Homebrew (macOS / Linux)
+
+```sh
+brew install stormlightlabs/tap/storm
+```
+
+The goreleaser workflow keeps the [`stormlightlabs/homebrew-tap`](https://github.com/stormlightlabs/homebrew-tap)
+formula up to date.
+
+### Go toolchain
+
 ```sh
 go install github.com/stormlightlabs/git-storm/cmd/storm@latest
 ```
-
-(Need Homebrew? Use the `storm.rb` formula template in this repo to build a tap.)
 
 ## Quick Start
 

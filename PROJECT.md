@@ -122,7 +122,7 @@ steps:
 
 #### Create a tap repo
 
-Make a repo: `github.com/stormlightlabs/homebrew-tools`.
+Make a repo: `github.com/stormlightlabs/homebrew-tap`.
 
 #### Formula template (`storm.rb`)
 
@@ -153,7 +153,7 @@ Automate with `goreleaser`:
 
 ```yaml
 brews:
-  - tap: stormlightlabs/homebrew-tools
+  - tap: stormlightlabs/homebrew-tap
     name: storm
     folder: Formula
     commit_author:

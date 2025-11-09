@@ -1,0 +1,224 @@
+.TH STORM 1 "2025-11-09" "storm" "A Git-aware changelog manager for Go projects"
+.SH NAME
+storm - A Git-aware changelog manager for Go projects
+.SH SYNOPSIS
+\fBstorm\fP [\fIoptions\&.\&.\&.\fP] [\fIargument\&.\&.\&.\fP]
+.SH DESCRIPTION
+storm is a modern changelog generator inspired by Towncrier\&.
+.PP
+It manages \&.changes/ entries, generates Keep a Changelog sections,
+.PP
+and can review commits interactively through a TUI\&.
+.SH OPTIONS
+.TP
+\fB--o --output\fP
+Output changelog file path
+.TP
+\fB--repo\fP
+Path to the Git repository
+.SH COMMANDS
+.TP
+\fBbump\fP
+.RS 4
+Calculate the next semantic version and optionally update toolchain manifests
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--bump\fP
+Which semver component to bump (major, minor, or patch)
+.TP
+\fB--toolchain\fP
+Toolchain manifests to update (paths, types, or 'interactive')
+.RE
+.TP
+\fBcheck\fP [from] [to]
+.RS 4
+Validate changelog entries exist for all commits
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--since\fP
+Check changes since the given tag
+.RE
+.TP
+\fBcompletion\fP
+.RS 4
+Generate the autocompletion script for the specified shell
+.RE
+.TP
+\fBCOMMANDS\fP
+.RS 4
+\fBbash\fP
+.RS 4
+Generate the autocompletion script for bash
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--no-descriptions\fP
+disable completion descriptions
+.RE
+.TP
+\fBfish\fP
+.RS 4
+Generate the autocompletion script for fish
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--no-descriptions\fP
+disable completion descriptions
+.RE
+.TP
+\fBpowershell\fP
+.RS 4
+Generate the autocompletion script for powershell
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--no-descriptions\fP
+disable completion descriptions
+.RE
+.TP
+\fBzsh\fP
+.RS 4
+Generate the autocompletion script for zsh
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--no-descriptions\fP
+disable completion descriptions
+.RE
+.RE
+.TP
+\fBdiff\fP <from>\&.\&.<to> | diff <from> <to>
+.RS 4
+Show a line-based diff between two commits or tags
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--e --expanded\fP
+Show all unchanged lines (disable compression)
+.TP
+\fB--f --file\fP
+Specific file to diff (optional, shows all files if omitted)
+.TP
+\fB--v --view\fP
+Diff rendering: split or unified
+.RE
+.TP
+\fBgenerate\fP [from] [to]
+.RS 4
+Generate changelog entries from Git commits
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--i --interactive\fP
+Review changes interactively in a TUI
+.TP
+\fB--since\fP
+Generate changes since the given tag
+.RE
+.TP
+\fBhelp\fP [command]
+.RS 4
+Help about any command
+.RE
+.TP
+\fBrelease\fP
+.RS 4
+Promote unreleased changes into a new changelog version
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--bump\fP
+Automatically bump the previous version (major, minor, or patch)
+.TP
+\fB--clear-changes\fP
+Delete \&.changes/*\&.md files after successful release
+.TP
+\fB--date\fP
+Release date in YYYY-MM-DD format (default: today)
+.TP
+\fB--dry-run\fP
+Preview changes without writing files
+.TP
+\fB--tag\fP
+Create an annotated Git tag with release notes
+.TP
+\fB--toolchain\fP
+Toolchain manifests to update (paths, types, or 'interactive')
+.TP
+\fB--version\fP
+Semantic version for the new release (e\&.g\&., 1\&.3\&.0)
+.RE
+.TP
+\fBunreleased\fP
+.RS 4
+Manage unreleased changes (\&.changes directory)
+.RE
+.TP
+\fBCOMMANDS\fP
+.RS 4
+\fBadd\fP
+.RS 4
+Add a new unreleased change entry
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--scope\fP
+Optional scope or subsystem name
+.TP
+\fB--summary\fP
+Short summary of the change
+.TP
+\fB--type\fP
+Type of change (added, changed, fixed, removed, security)
+.RE
+.TP
+\fBlist\fP
+.RS 4
+List all unreleased changes
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--json\fP
+Output results as JSON
+.RE
+.TP
+\fBpartial\fP <commit-ref>
+.RS 4
+Create entry linked to a specific commit
+.RE
+.TP
+\fBOPTIONS\fP
+.RS 4
+\fB--scope\fP
+Optional scope or subsystem name
+.TP
+\fB--summary\fP
+Override summary (auto-detected from commit)
+.TP
+\fB--type\fP
+Override change type (auto-detected from commit)
+.RE
+.TP
+\fBreview\fP
+.RS 4
+Review unreleased changes interactively
+.RE
+.RE
+.TP
+\fBversion\fP
+.RS 4
+Print the current storm version
+.RE
