@@ -97,26 +97,19 @@ tasks:
   gen:completions:
     desc: Generate shell completion files
     cmds:
-      - |
-        rm -rf completions
-        mkdir -p completions
-        for sh in bash zsh fish; do
-          go run ./cmd completion "$sh" > completions/storm."$sh"
+      - mkdir -p dist/completions
+      - for sh in bash zsh fish; do
+          go run ./cmd completion "$sh" > dist/completions/storm."$sh";
         done
-    sources:
-      - "**/*.go"
     generates:
-      - "completions/{{.BINARY_NAME}}.bash"
-      - "completions/{{.BINARY_NAME}}.zsh"
-      - "completions/{{.BINARY_NAME}}.fish"
+      - "dist/completions/storm.bash"
+      - "dist/completions/storm.zsh"
+      - "dist/completions/storm.fish"
 
   gen:manpage:
     desc: Generate man page file
     cmds:
-      - rm -rf manpages
-      - mkdir -p manpages
-      - go run ./cmd man > manpages/{{.BINARY_NAME}}.1
-    sources:
-      - "**/*.go"
+      - mkdir -p dist/manpages
+      - go run ./cmd man > dist/manpages/storm.1
     generates:
-      - "manpages/{{.BINARY_NAME}}.1"
+      - "dist/manpages/storm.1"

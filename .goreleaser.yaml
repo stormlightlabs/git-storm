@@ -115,8 +115,8 @@ archives:
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_extras
     files:
-      - "completions/*"
-      - "manpages/*"
+      - "dist/completions/*"
+      - "dist/manpages/*"
 
 changelog:
   sort: asc
