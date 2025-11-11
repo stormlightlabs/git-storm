@@ -1,6 +1,7 @@
 import { defineConfig } from "vitepress";
 
 // https://vitepress.dev/reference/site-config
+// https://vitepress.dev/reference/default-theme-config
 export default defineConfig({
     title: "Storm",
     description: "Local-first changelog manager for git repositories",
@@ -11,7 +12,6 @@ export default defineConfig({
         },
     },
     themeConfig: {
-        // https://vitepress.dev/reference/default-theme-config
         nav: [
             { text: "Introduction", link: "/introduction" },
             { text: "Quickstart", link: "/quickstart" },
@@ -45,4 +45,5 @@ export default defineConfig({
             },
         ],
     },
+    base: "/git-storm/",
 });
